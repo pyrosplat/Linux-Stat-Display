@@ -8,7 +8,7 @@
 
 Real-time system stats from your Linux gaming PC displayed on a Raspberry Pi touchscreen.
 
-![Custom Game Art Example](examples/CustomRidge.png)
+![Custom Game Art Example](Examples/CustomRidge.png)
 
 Works on Bazzite, SteamOS, and other Linux distributions.
 
@@ -26,7 +26,7 @@ Works on Bazzite, SteamOS, and other Linux distributions.
 
 | Portrait - Black & White Theme | Portrait - Light Theme | Portrait - Cyberpunk Theme |
 |:------------------------------:|:-------------------------:|:--------------------------:|
-| ![Portrait BW](examples/BlackWhiteTheme.png) | ![Light](examples/LightTheme.png) | ![Cyberpunk](examples/CyberPunkTheme.png) |
+| ![Portrait BW](Examples/BlackWhiteTheme.png) | ![Light](Examples/LightTheme.png) | ![Cyberpunk](Examples/CyberPunkTheme.png) |
 
 **Settings Panel:**
 
