@@ -41,7 +41,12 @@ Works on Bazzite, SteamOS, and other Linux distributions.
 - **Linux Gaming PC** - Bazzite, SteamOS, Ubuntu, Fedora, Arch, etc.
 - **Raspberry Pi 3 or newer** - Pi 4/5 recommended for best performance
 - **Touchscreen Display** - 480×1920 or 1920×480 (landscape capable)
+  - **Recommended:** [8.8" IPS Touchscreen Display (480×1920)](https://amzn.to/3YiP0RT) - The screen used in this project
 - **Both on the same network**
+
+### Optional Hardware
+
+- **3D Printed Bezel** - [Fractal Design Ridge LCD Case Mod](https://www.printables.com/model/1246939-fractal-design-ridge-lcd-case-mod) - Custom bezel for mounting in Fractal Ridge case (shown in photos above)
 
 ## Quick Install
 
@@ -285,6 +290,20 @@ systemctl --user daemon-reload
 
 - Resolution: 480×1920 (portrait) or 1920×480 (landscape capable)
 - Touch input support (optional but recommended)
+- HDMI or DSI connection
+
+**Tested Display:**
+- [8.8" IPS Capacitive Touchscreen (480×1920)](https://amzn.to/3YiP0RT)
+  - USB powered
+  - HDMI input
+  - Capacitive touch via USB
+  - Works perfectly with this project
+
+**3D Printed Case Mod:**
+- [Fractal Design Ridge LCD Bezel](https://www.printables.com/model/1246939-fractal-design-ridge-lcd-case-mod)
+  - Custom bezel for mounting 8.8" display in Fractal Ridge case
+  - STL files available for free download
+  - Shown in the photos above
 
 ## Support
 
