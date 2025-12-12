@@ -56,6 +56,7 @@ Works on Bazzite, SteamOS, and other Linux distributions.
 unzip RPI_Stats_Display.zip
 cd RPI_Stats_Display/RPI
 chmod +x install.sh
+sed -i 's/\r$//' install.sh
 sudo ./install.sh
 ```
 
@@ -78,6 +79,7 @@ The stats display will auto-start on boot.
 ```bash
 unzip RPI_Stats_Display.zip
 cd RPI_Stats_Display/LinuxPC
+sed -i 's/\r$//' install.sh
 chmod +x install.sh
 ./install.sh
 ```
