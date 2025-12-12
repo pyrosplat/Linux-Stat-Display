@@ -1,9 +1,14 @@
 # Linux PC Stats Display  
+
+![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-3%2B-red.svg)
+![Linux](https://img.shields.io/badge/Linux-Compatible-green.svg)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](LICENSE)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/pyrocac)
 
 Real-time system stats from your Linux gaming PC displayed on a Raspberry Pi touchscreen.
 
-![Custom Game Art Example](Examples/CustomRidge.png)
+![Custom Game Art Example](examples/CustomRidge.png)
 
 Works on Bazzite, SteamOS, and other Linux distributions.
 
@@ -21,7 +26,7 @@ Works on Bazzite, SteamOS, and other Linux distributions.
 
 | Portrait - Black & White Theme | Portrait - Light Theme | Portrait - Cyberpunk Theme |
 |:------------------------------:|:-------------------------:|:--------------------------:|
-| ![Portrait BW](Examples/BlackWhiteTheme.png) | ![Light](Examples/LightTheme.png) | ![Cyberpunk](Examples/CyberPunkTheme.png) |
+| ![Portrait BW](examples/BlackWhiteTheme.png) | ![Light](examples/LightTheme.png) | ![Cyberpunk](examples/CyberPunkTheme.png) |
 
 **Settings Panel:**
 
@@ -289,4 +294,13 @@ If you find this project useful, consider buying me a coffee! ☕
 
 ## License
 
-Free to use and modify for personal use. 
+This project is licensed under [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](LICENSE).
+
+**This means:**
+- ✅ Free for personal use
+- ✅ Free for educational use
+- ✅ You can modify and share (with credit)
+- ❌ Cannot be sold or used commercially
+- ❌ Modified versions must use the same license
+
+For commercial use, please contact: https://ko-fi.com/pyrocac 

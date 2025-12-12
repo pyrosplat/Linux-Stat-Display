@@ -2,7 +2,7 @@
 """
 Linux PC System Stats Sender v1.0
 Collects system stats and sends them to Pi display via WiFi
-Works on Bazzite, SteamOS, Steam Deck, and other Linux systems
+Works on Bazzite, SteamOS, and other Linux systems
 Optimized with caching and improved efficiency
 """
 
@@ -731,14 +731,14 @@ def get_fps():
     
     Priority:
     1. MangoHud CSV files (works everywhere with MangoHud enabled)
-    2. Gamescope stats file (Steam Deck native, requires launch option)
+    2. Gamescope stats file (requires launch option)
     """
-    # Try MangoHud first (most reliable, works on Bazzite/Linux/Deck)
+    # Try MangoHud first (most reliable, works on Bazzite/Linux/SteamOS)
     fps = get_fps_from_mangohud()
     if fps > 0:
         return fps
     
-    # Try Gamescope as fallback (Steam Deck without MangoHud)
+    # Try Gamescope as fallback (without MangoHud)
     fps = get_fps_from_gamescope()
     if fps > 0:
         return fps
