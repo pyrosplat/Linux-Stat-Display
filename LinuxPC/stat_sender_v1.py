@@ -13,9 +13,32 @@ import requests
 from pathlib import Path
 import re
 
-# Configuration
-PI_IP = "10.0.0.225"
+# Configuration - load from config.json (created by install.sh)
+import json as _json
+import sys as _sys
+_config_path = Path(__file__).parent / 'config.json'
+_config = {}
+if _config_path.exists():
+    try:
+        with open(_config_path) as _f:
+            _config = _json.load(_f)
+    except Exception as _e:
+        print(f"ERROR: Could not read config.json: {_e}")
+        _sys.exit(1)
+else:
+    print(f"ERROR: config.json not found at {_config_path}")
+    print("Please run the installer (install.sh) to set up your configuration.")
+    _sys.exit(1)
+
+PI_IP = _config.get("pi_ip", "").strip()
+if not PI_IP:
+    print("ERROR: No Pi IP address found in config.json.")
+    print("Please run the installer (install.sh) and enter your Raspberry Pi's IP address.")
+    _sys.exit(1)
+
+PREFERRED_ORIENTATION = _config.get("orientation", None)  # None = don't push, let Pi keep its setting
 PI_URL = f"http://{PI_IP}:5000/stats"
+PI_ORIENTATION_URL = f"http://{PI_IP}:5000/api/settings/default_orientation"
 UPDATE_INTERVAL = 1  # seconds
 GAME_CACHE_DURATION = 5  # seconds
 
@@ -218,120 +241,158 @@ def get_cpu_freq():
 
 
 def get_cpu_power():
-    """Get CPU power consumption in watts using energy counters"""
-    global _last_cpu_energy, _last_cpu_energy_time
+    """Get CPU power consumption in watts.
     
+    Tries multiple sources in order:
+    1. AMD zenergy/hwmon power files
+    2. RAPL energy counters (may be permission denied on SteamOS/immutable distros)
+    3. Returns None if unavailable (caller should display N/A, not 0W)
+    """
+    global _last_cpu_energy, _last_cpu_energy_time
+
     try:
-        # AMD zenergy sensor
+        # AMD zenergy or hwmon power input
         for hwmon_path in Path('/sys/class/hwmon').glob('hwmon*'):
             name_file = hwmon_path / 'name'
             if not name_file.exists():
                 continue
-            
-            if name_file.read_text().strip() == 'zenergy':
-                for energy_file in hwmon_path.glob('energy*_input'):
-                    label_file = energy_file.parent / energy_file.name.replace('_input', '_label')
-                    if label_file.exists():
-                        label = label_file.read_text().strip().lower()
-                        if any(x in label for x in ['package', 'socket', 'epackage', 'esocket']):
-                            current_energy = int(energy_file.read_text().strip())
-                            current_time = time.time()
-                            
-                            if _last_cpu_energy is not None and _last_cpu_energy_time is not None:
-                                time_delta = current_time - _last_cpu_energy_time
-                                energy_delta = current_energy - _last_cpu_energy
-                                power_w = (energy_delta / 1_000_000) / time_delta
-                                
-                                _last_cpu_energy = current_energy
-                                _last_cpu_energy_time = current_time
-                                
-                                # Sanity check
-                                if 0 < power_w < 500:
-                                    return round(power_w, 1)
-                            
-                            # Initialize on first run
-                            _last_cpu_energy = current_energy
-                            _last_cpu_energy_time = current_time
-                            return 0.0
-        
-        # Intel RAPL fallback
-        rapl_path = Path('/sys/class/powercap/intel-rapl/intel-rapl:0/power_uw')
-        if rapl_path.exists():
-            power_uw = int(rapl_path.read_text().strip())
-            return round(power_uw / 1_000_000, 1)
-            
+            name = name_file.read_text().strip()
+            if name in ['zenergy', 'amdgpu']:
+                continue
+            for pfile in ['power1_input', 'power1_average']:
+                p = hwmon_path / pfile
+                if p.exists():
+                    try:
+                        val = int(p.read_text().strip())
+                        if val > 0:
+                            return round(val / 1_000_000, 1)
+                    except Exception:
+                        pass
+
+        # RAPL energy counter (intel-rapl interface, used by AMD too)
+        # The installer sets up /etc/tmpfiles.d/rapl-read.conf to make this
+        # file world-readable on every boot, so no sudo needed.
+        rapl_energy = Path('/sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/energy_uj')
+        if rapl_energy.exists():
+            try:
+                now = time.time()
+                energy = int(rapl_energy.read_text().strip())
+
+                if _last_cpu_energy is not None and _last_cpu_energy_time is not None:
+                    time_delta = now - _last_cpu_energy_time
+                    energy_delta = energy - _last_cpu_energy
+                    if time_delta > 0 and energy_delta >= 0:
+                        power_w = (energy_delta / 1_000_000) / time_delta
+                        if 0 < power_w < 500:
+                            _last_cpu_energy = energy
+                            _last_cpu_energy_time = now
+                            return round(power_w, 1)
+                _last_cpu_energy = energy
+                _last_cpu_energy_time = now
+            except PermissionError:
+                # RAPL not made readable yet - run the installer to fix this
+                pass
+            except Exception:
+                pass
+
     except Exception as e:
         print(f"Warning: Could not read CPU power: {e}")
-    
-    return 0.0
 
-
-# ============================================================
-# GPU STATS
-# ============================================================
-
+    return None  # Caller should show N/A, not 0W
 def get_gpu_stats():
-    """Get GPU stats (usage, temp, freq, power, VRAM)"""
-    stats = {"usage": 0, "temp": 0.0, "frequency": 0, "power": 0.0, "vram_used": 0, "vram_total": 0}
+    """Get GPU stats (usage, temp, freq, power, VRAM)
+    
+    Handles both discrete AMD GPUs and APUs (Steam Deck Van Gogh/Aerith).
+    On APUs, visible VRAM (mem_info_vis_vram_*) is used instead of total
+    shared system memory which can report falsely large values.
+    Frequency comes from hwmon freq1_input (Hz) rather than pp_dpm_sclk
+    which has inconsistent formatting across driver versions.
+    """
+    stats = {"usage": 0, "temp": 0.0, "frequency": 0, "power": 0.0, "vram_used": 0, "vram_total": 0, "vram_free": 0}
     
     try:
-        # AMD GPU
+        # AMD GPU (discrete or APU)
         for hwmon_path in Path('/sys/class/hwmon').glob('hwmon*'):
             name_file = hwmon_path / 'name'
             if not name_file.exists():
                 continue
             
             name = name_file.read_text().strip()
-            if name in ['amdgpu', 'amdgpu-pci']:
-                # Find GPU card device path
+            if name not in ['amdgpu', 'amdgpu-pci']:
+                continue
+
+            # hwmon5/device resolves to the PCI device path, NOT the drm path.
+            # gpu_busy_percent, mem_info_*, pp_dpm_sclk all live under the drm
+            # card device. Find the drm card whose device symlink resolves to
+            # the same PCI path as this hwmon.
+            hwmon_pci = (hwmon_path / 'device').resolve()
+            print(f"DEBUG hwmon: {hwmon_path}, pci: {hwmon_pci}")
+            gpu_card = None
+            for card_dev in Path('/sys/class/drm').glob('card*/device'):
+                card_resolved = card_dev.resolve()
+                print(f"DEBUG   drm card: {card_dev} -> {card_resolved} | match={card_resolved == hwmon_pci}")
+                if card_resolved == hwmon_pci:
+                    gpu_card = card_dev
+                    break
+            if gpu_card is None:
+                print(f"DEBUG no drm match found, falling back to first card")
                 card_paths = list(Path('/sys/class/drm').glob('card*/device'))
-                gpu_card = str(card_paths[0]) if card_paths else '/sys/class/drm/card0/device'
-                
-                # GPU usage
-                for file_name in ['gpu_busy_percent', 'gpu_usage', 'busy_percent']:
-                    usage_file = Path(gpu_card) / file_name
-                    if usage_file.exists():
-                        stats['usage'] = int(usage_file.read_text().strip())
-                        break
-                
-                # GPU temperature
-                temp_file = hwmon_path / 'temp1_input'
+                gpu_card = card_paths[0] if card_paths else Path('/sys/class/drm/card0/device')
+            print(f"DEBUG gpu_card={gpu_card}")
+            
+            # Verify key files exist
+            for fname in ['gpu_busy_percent', 'mem_info_vis_vram_used', 'mem_info_vis_vram_total']:
+                fpath = gpu_card / fname
+                exists = fpath.exists()
+                val = fpath.read_text().strip() if exists else "N/A"
+                print(f"DEBUG   {fname}: exists={exists} val={val}")
+
+            # GPU usage
+            usage_file = gpu_card / 'gpu_busy_percent'
+            if usage_file.exists():
+                stats['usage'] = int(usage_file.read_text().strip())
+
+            # GPU temperature - use temp1 (edge/junction)
+            for temp_name in ['temp1_input', 'temp2_input']:
+                temp_file = hwmon_path / temp_name
                 if temp_file.exists():
-                    stats['temp'] = round(int(temp_file.read_text()) / 1000, 1)
-                
-                # GPU frequency
-                for file_name in ['pp_dpm_sclk', 'current_link_speed', 'gpu_clock']:
-                    freq_file = Path(gpu_card) / file_name
-                    if freq_file.exists():
-                        content = freq_file.read_text()
-                        for line in content.split('\n'):
-                            if '*' in line:
-                                match = re.search(r'(\d+)', line.split(':', 1)[1])
-                                if match:
-                                    stats['frequency'] = int(match.group(1))
-                                break
+                    val = int(temp_file.read_text().strip())
+                    if val > 0:
+                        stats['temp'] = round(val / 1000, 1)
                         break
-                
-                # GPU power
-                power_file = hwmon_path / 'power1_average'
-                if power_file.exists():
-                    stats['power'] = round(int(power_file.read_text()) / 1_000_000, 1)
-                
-                # VRAM usage
-                vram_methods = [
-                    ('mem_info_vram_used', 'mem_info_vram_total'),
-                    ('mem_info_vis_vram_used', 'mem_info_vis_vram_total'),
-                ]
-                for used_name, total_name in vram_methods:
-                    used_file = Path(gpu_card) / used_name
-                    total_file = Path(gpu_card) / total_name
-                    if used_file.exists() and total_file.exists():
-                        stats['vram_used'] = int(used_file.read_text().strip()) // (1024 * 1024)
-                        stats['vram_total'] = int(total_file.read_text().strip()) // (1024 * 1024)
-                        break
-                
-                return stats
-        
+
+            # GPU frequency - hwmon freq1_input is in Hz, convert to MHz
+            # More reliable than pp_dpm_sclk which has variable formatting
+            freq_file = hwmon_path / 'freq1_input'
+            if freq_file.exists():
+                hz = int(freq_file.read_text().strip())
+                stats['frequency'] = hz // 1_000_000  # Hz -> MHz
+            else:
+                # Fallback: parse pp_dpm_sclk for the active (*) entry
+                sclk_file = gpu_card / 'pp_dpm_sclk'
+                if sclk_file.exists():
+                    for line in sclk_file.read_text().splitlines():
+                        if '*' in line:
+                            match = re.search(r'(\d+)Mhz', line, re.IGNORECASE)
+                            if match:
+                                stats['frequency'] = int(match.group(1))
+                            break
+
+            # GPU power
+            power_file = hwmon_path / 'power1_average'
+            if power_file.exists():
+                stats['power'] = round(int(power_file.read_text().strip()) / 1_000_000, 1)
+
+            # VRAM - always use full card VRAM (mem_info_vram_*)
+            vram_used_file = gpu_card / 'mem_info_vram_used'
+            vram_total_file = gpu_card / 'mem_info_vram_total'
+            if vram_used_file.exists() and vram_total_file.exists():
+                stats['vram_used'] = int(vram_used_file.read_text().strip()) // (1024 * 1024)
+                stats['vram_total'] = int(vram_total_file.read_text().strip()) // (1024 * 1024)
+                stats['vram_free'] = stats['vram_total'] - stats['vram_used']
+
+            return stats
+
         # NVIDIA GPU fallback
         result = subprocess.run(
             ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu,clocks.gr,power.draw,memory.used,memory.total',
@@ -346,7 +407,8 @@ def get_gpu_stats():
             stats['power'] = float(vals[3])
             stats['vram_used'] = int(float(vals[4]))
             stats['vram_total'] = int(float(vals[5]))
-            
+            stats['vram_free'] = stats['vram_total'] - stats['vram_used']
+
     except Exception as e:
         print(f"Warning: Could not read GPU stats: {e}")
     
@@ -676,8 +738,11 @@ def get_network_stats():
 # ============================================================
 
 def get_fps_from_mangohud():
-    """Get FPS from MangoHud CSV files"""
+    """Get FPS from MangoHud - reads /tmp/fps.txt written by fps_logger.sh,
+    with fallback to reading MangoHud CSVs directly (SteamOS writes to
+    ~/.local/share/MangoHud/, other distros write to $HOME)"""
     try:
+        # Primary: fps_logger.sh writes here
         fps_file = Path('/tmp/fps.txt')
         if fps_file.exists() and (time.time() - fps_file.stat().st_mtime < 3):
             fps_str = fps_file.read_text().strip()
@@ -685,6 +750,33 @@ def get_fps_from_mangohud():
                 return int(fps_str)
     except:
         pass
+
+    # Fallback: read MangoHud CSV directly
+    # SteamOS puts them in ~/.local/share/MangoHud/, Bazzite/others in $HOME
+    import glob
+    search_dirs = [
+        Path.home() / '.local/share/MangoHud',
+        Path.home(),
+    ]
+    pattern = '*_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9].csv'
+    try:
+        for search_dir in search_dirs:
+            csv_files = sorted(search_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+            if csv_files:
+                latest = csv_files[0]
+                if time.time() - latest.stat().st_mtime < 3:
+                    lines = latest.read_text().splitlines()
+                    for line in reversed(lines):
+                        if line and not line.startswith('fps'):
+                            fps_str = line.split(',')[0].strip()
+                            try:
+                                return int(float(fps_str))
+                            except ValueError:
+                                pass
+                break
+    except:
+        pass
+
     return 0
 
 
@@ -912,6 +1004,24 @@ def send_stats(stats):
         return False
 
 
+def push_orientation_to_pi():
+    """Push preferred orientation to Pi on startup if configured"""
+    if not PREFERRED_ORIENTATION:
+        return
+    try:
+        resp = requests.post(
+            PI_ORIENTATION_URL,
+            json={"orientation": PREFERRED_ORIENTATION},
+            timeout=3
+        )
+        if resp.status_code == 200:
+            print(f"✓ Pi orientation set to: {PREFERRED_ORIENTATION}")
+        else:
+            print(f"⚠ Could not set Pi orientation (status {resp.status_code}) - will retry on next start")
+    except Exception as e:
+        print(f"⚠ Could not reach Pi to set orientation: {e}")
+
+
 def main():
     """Main loop"""
     
@@ -922,7 +1032,10 @@ def main():
     print(f"CPU: {get_cpu_name()}")
     print(f"GPU: {get_gpu_name()}")
     print()
-    
+
+    # Push orientation preference to Pi before starting the send loop
+    push_orientation_to_pi()
+
     consecutive_failures = 0
     
     while True:

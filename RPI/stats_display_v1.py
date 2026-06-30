@@ -62,6 +62,14 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        .material-icons { font-size: inherit; vertical-align: middle; line-height: 1; }
+        .stat-title .material-icons { font-size: 20px; margin-right: 4px; }
+        .settings-section h3 .material-icons { font-size: 18px; margin-right: 6px; }
+        .orientation-option .material-icons { font-size: 16px; margin-right: 4px; }
+        .theme-option .material-icons { font-size: 16px; margin-right: 4px; }
+    </style>
     <title>System Stats</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -146,6 +154,75 @@ HTML_TEMPLATE = """
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', 'Noto Color Emoji', sans-serif;
             overflow: hidden;
             transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        /* ── Mobile browser override ──────────────────────────────────────
+           The Pi layout uses fixed px dimensions and overflow:hidden which
+           blocks scrolling on phones. When a real mobile browser loads the
+           page we reset all of that and switch to a single-column card layout.
+        ──────────────────────────────────────────────────────────────────── */
+        @media screen and (max-width: 768px) {
+            body, body.orientation-portrait, body.orientation-landscape {
+                width: 100% !important;
+                height: auto !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                -webkit-overflow-scrolling: touch;
+            }
+            .container,
+            body.orientation-portrait .container,
+            body.orientation-landscape .container {
+                display: flex !important;
+                flex-direction: column !important;
+                width: 100% !important;
+                height: auto !important;
+                padding: 10px !important;
+                gap: 12px !important;
+                overflow: visible !important;
+            }
+            .stat-card,
+            body.orientation-portrait .stat-card,
+            body.orientation-landscape .stat-card {
+                width: 100% !important;
+                min-height: auto !important;
+                height: auto !important;
+                padding: 14px !important;
+                box-sizing: border-box !important;
+            }
+            .game-card,
+            body.orientation-portrait .game-card,
+            body.orientation-landscape .game-card {
+                width: 100% !important;
+                height: auto !important;
+                min-height: auto !important;
+                padding: 14px !important;
+                box-sizing: border-box !important;
+            }
+            .game-art-container,
+            body.orientation-portrait .game-art-container,
+            body.orientation-landscape .game-art-container {
+                height: 200px !important;
+            }
+            .gauge-container,
+            body.orientation-portrait .gauge-container,
+            body.orientation-landscape .gauge-container {
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: 16px !important;
+            }
+            .circular-gauge,
+            body.orientation-portrait .circular-gauge,
+            body.orientation-landscape .circular-gauge {
+                width: 110px !important;
+                height: 110px !important;
+                flex-shrink: 0 !important;
+            }
+            .stat-details {
+                flex: 1 !important;
+            }
+            .settings-panel {
+                width: 85vw !important;
+            }
         }
         
         body.orientation-portrait {
@@ -844,7 +921,7 @@ HTML_TEMPLATE = """
         
         <div class="settings-section">
             <h3 class="clickable-header" onclick="toggleDiskInfo()" style="display: flex; justify-content: space-between; align-items: center;">
-                💾 Disk Info
+                <span class="material-icons">save</span> Disk Info
                 <span id="disk-arrow" style="transition: transform 0.2s;">▼</span>
             </h3>
             <div id="disk-info-submenu" style="display: none; margin-top: 10px;">
@@ -856,38 +933,38 @@ HTML_TEMPLATE = """
         
         <div class="settings-section">
             <h3 class="clickable-header" onclick="toggleThemeSubmenu()" style="display: flex; justify-content: space-between; align-items: center;">
-                Theme Options
+                <span class="material-icons">palette</span> Theme Options
                 <span id="theme-arrow" style="transition: transform 0.2s;">▼</span>
             </h3>
             <div id="theme-submenu" style="display: none; margin-top: 10px;">
-                <div class="theme-option active" data-theme="dark" onclick="selectTheme('dark')">🌃 Dark / Cyberpunk</div>
-                <div class="theme-option" data-theme="light" onclick="selectTheme('light')">☀️ Light</div>
-                <div class="theme-option" data-theme="matrix" onclick="selectTheme('matrix')">🟩 Matrix</div>
-                <div class="theme-option" data-theme="retro" onclick="selectTheme('retro')">🎮 Retro</div>
-                <div class="theme-option" data-theme="nord" onclick="selectTheme('nord')">❄️ Nord</div>
-                <div class="theme-option" data-theme="dracula" onclick="selectTheme('dracula')">🧛 Dracula</div>
-                <div class="theme-option" data-theme="bw" onclick="selectTheme('bw')">⬛ Black & White</div>
-                <div class="theme-option" data-theme="steam" onclick="selectTheme('steam')">🎮 Steam</div>
+                <div class="theme-option active" data-theme="dark" onclick="selectTheme('dark')"><span class="material-icons">nights_stay</span> Dark / Cyberpunk</div>
+                <div class="theme-option" data-theme="light" onclick="selectTheme('light')"><span class="material-icons">light_mode</span> Light</div>
+                <div class="theme-option" data-theme="matrix" onclick="selectTheme('matrix')"><span class="material-icons">terminal</span> Matrix</div>
+                <div class="theme-option" data-theme="retro" onclick="selectTheme('retro')"><span class="material-icons">sports_esports</span> Retro</div>
+                <div class="theme-option" data-theme="nord" onclick="selectTheme('nord')"><span class="material-icons">ac_unit</span> Nord</div>
+                <div class="theme-option" data-theme="dracula" onclick="selectTheme('dracula')"><span class="material-icons">dark_mode</span> Dracula</div>
+                <div class="theme-option" data-theme="bw" onclick="selectTheme('bw')"><span class="material-icons">contrast</span> Black & White</div>
+                <div class="theme-option" data-theme="steam" onclick="selectTheme('steam')"><span class="material-icons">videogame_asset</span> Steam</div>
             </div>
         </div>
         
         <div class="settings-section">
-            <h3>Display Rotation</h3>
-            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">📱 Rotates display and touch input instantly</div>
+            <h3><span class="material-icons">screen_rotation</span> Display Rotation</h3>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;"><span class="material-icons">touch_app</span> Rotates display and touch input instantly</div>
             <div class="orientation-option" data-physical="portrait" onclick="changePhysicalOrientation('portrait')">
-                📱 Portrait Mode
+                <span class="material-icons">stay_current_portrait</span> Portrait Mode
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">480×1920 vertical layout</div>
             </div>
             <div class="orientation-option" data-physical="landscape" onclick="changePhysicalOrientation('landscape')">
-                🖥️ Landscape Mode
+                <span class="material-icons">stay_current_landscape</span> Landscape Mode
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">1920×480 horizontal layout</div>
             </div>
         </div>
         
         <div class="settings-section">
-            <h3>Gauge Display</h3>
-            <div class="orientation-option active" data-gauge="usage" onclick="setGaugeMode('usage')">📊 Show Usage %</div>
-            <div class="orientation-option" data-gauge="temp" onclick="setGaugeMode('temp')">🌡️ Show Temperature</div>
+            <h3><span class="material-icons">speed</span> Gauge Display</h3>
+            <div class="orientation-option active" data-gauge="usage" onclick="setGaugeMode('usage')"><span class="material-icons">percent</span> Show Usage %</div>
+            <div class="orientation-option" data-gauge="temp" onclick="setGaugeMode('temp')"><span class="material-icons">thermostat</span> Show Temperature</div>
         </div>
         </div> <!-- Close settings-content -->
     </div> <!-- Close settings-panel -->
@@ -896,7 +973,7 @@ HTML_TEMPLATE = """
         <div class="game-card">
             <div class="game-art-container">
                 <img id="game-art" class="game-art" src="" alt="Game Art">
-                <div id="game-art-placeholder" class="game-art-placeholder">🎮</div>
+                <div id="game-art-placeholder" class="game-art-placeholder"><span class="material-icons" style="font-size:64px;opacity:0.4;">videogame_asset</span></div>
             </div>
             <div class="game-title" id="game">{{ stats.game }}</div>
             <div class="game-subtitle" id="game-subtitle" style="display: none;">Detected: <span id="detected-name"></span></div>
@@ -920,7 +997,7 @@ HTML_TEMPLATE = """
         
         <div class="stat-card">
             <div class="stat-header">
-                <span class="stat-title gpu-color">GPU</span>
+                <span class="stat-title gpu-color"><span class="material-icons">memory</span> GPU</span>
                 <span class="stat-value gpu-color" id="gpu-model">{{ stats.gpu.name }}</span>
             </div>
             <div class="gauge-container">
@@ -938,19 +1015,19 @@ HTML_TEMPLATE = """
                 </div>
                 <div class="stat-details">
                     <div class="detail-row" id="gpu-detail-usage">
-                        <span class="detail-label">Usage</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">bar_chart</span>Usage</span>
                         <span class="detail-value gpu-color"><span id="gpu-usage-text">{{ stats.gpu.usage }}</span>%</span>
                     </div>
                     <div class="detail-row" id="gpu-detail-temp" style="display: none;">
-                        <span class="detail-label">Temperature</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">thermostat</span>Temperature</span>
                         <span class="detail-value gpu-color"><span id="gpu-temp">{{ stats.gpu.temp }}</span>°C</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Frequency</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">speed</span>Frequency</span>
                         <span class="detail-value"><span id="gpu-freq">{{ stats.gpu.frequency }}</span> MHz</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Power</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">bolt</span>Power</span>
                         <span class="detail-value"><span id="gpu-power">{{ stats.gpu.power }}</span> W</span>
                     </div>
                     <div class="progress-bar-bg">
@@ -962,7 +1039,7 @@ HTML_TEMPLATE = """
         
         <div class="stat-card">
             <div class="stat-header">
-                <span class="stat-title cpu-color">CPU</span>
+                <span class="stat-title cpu-color"><span class="material-icons">developer_board</span> CPU</span>
                 <span class="stat-value cpu-color" id="cpu-model">{{ stats.cpu.name }}</span>
             </div>
             <div class="gauge-container">
@@ -980,19 +1057,19 @@ HTML_TEMPLATE = """
                 </div>
                 <div class="stat-details">
                     <div class="detail-row" id="cpu-detail-usage">
-                        <span class="detail-label">Usage</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">bar_chart</span>Usage</span>
                         <span class="detail-value cpu-color"><span id="cpu-usage-text">{{ stats.cpu.usage }}</span>%</span>
                     </div>
                     <div class="detail-row" id="cpu-detail-temp" style="display: none;">
-                        <span class="detail-label">Temperature</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">thermostat</span>Temperature</span>
                         <span class="detail-value cpu-color"><span id="cpu-temp">{{ stats.cpu.temp }}</span>°C</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Frequency</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">speed</span>Frequency</span>
                         <span class="detail-value"><span id="cpu-freq">{{ stats.cpu.frequency }}</span> MHz</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Power</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">bolt</span>Power</span>
                         <span class="detail-value"><span id="cpu-power">{{ stats.cpu.power }}</span> W</span>
                     </div>
                     <div class="progress-bar-bg">
@@ -1004,7 +1081,7 @@ HTML_TEMPLATE = """
         
         <div class="stat-card">
             <div class="stat-header">
-                <span class="stat-title ram-color">RAM</span>
+                <span class="stat-title ram-color"><span class="material-icons">storage</span> RAM</span>
                 <span class="stat-value ram-color" id="ram-info" style="font-size: 12px;"></span>
             </div>
             <div class="gauge-container">
@@ -1021,15 +1098,15 @@ HTML_TEMPLATE = """
                 </div>
                 <div class="stat-details">
                     <div class="detail-row">
-                        <span class="detail-label">Used</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">data_usage</span>Used</span>
                         <span class="detail-value ram-color"><span id="ram-used">{{ stats.ram.used }}</span> GB</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Free</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">check_circle</span>Free</span>
                         <span class="detail-value"><span id="ram-free">{{ stats.ram.total - stats.ram.used }}</span> GB</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Total</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">database</span>Total</span>
                         <span class="detail-value"><span id="ram-total">{{ stats.ram.total }}</span> GB</span>
                     </div>
                     <div class="progress-bar-bg">
@@ -1041,7 +1118,7 @@ HTML_TEMPLATE = """
         
         <div class="stat-card">
             <div class="stat-header">
-                <span class="stat-title vram-color">GPU VRAM</span>
+                <span class="stat-title vram-color"><span class="material-icons">video_settings</span> GPU VRAM</span>
             </div>
             <div class="gauge-container">
                 <div class="circular-gauge">
@@ -1057,15 +1134,15 @@ HTML_TEMPLATE = """
                 </div>
                 <div class="stat-details">
                     <div class="detail-row">
-                        <span class="detail-label">Used</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">data_usage</span>Used</span>
                         <span class="detail-value vram-color"><span id="vram-used">0</span> GB</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Free</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">check_circle</span>Free</span>
                         <span class="detail-value"><span id="vram-free">0</span> GB</span>
                     </div>
                     <div class="detail-row">
-                        <span class="detail-label">Total</span>
+                        <span class="detail-label"><span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:3px;">database</span>Total</span>
                         <span class="detail-value"><span id="vram-total">0</span> GB</span>
                     </div>
                     <div class="progress-bar-bg">
@@ -1525,13 +1602,13 @@ HTML_TEMPLATE = """
             const titleLower = (gameTitle || '').toLowerCase();
             
             if (titleLower.includes('desktop')) {
-                placeholder.textContent = '🖥️';
+                placeholder.innerHTML = '<span class="material-icons" style="font-size:64px;opacity:0.4;">desktop_windows</span>';
                 placeholder.classList.add('desktop-mode');
             } else if (titleLower.includes('steamos')) {
-                placeholder.textContent = '🎮';
+                placeholder.innerHTML = '<span class="material-icons" style="font-size:64px;opacity:0.4;">videogame_asset</span>';
                 placeholder.classList.add('desktop-mode');
             } else {
-                placeholder.textContent = '🎮';
+                placeholder.innerHTML = '<span class="material-icons" style="font-size:64px;opacity:0.4;">videogame_asset</span>';
                 placeholder.classList.remove('desktop-mode');
             }
         }
@@ -2285,7 +2362,7 @@ def settings_page():
                     📱 Portrait<br><small style="font-weight:normal">480×1920</small>
                 </button>
                 <button class="btn" id="btn-landscape" onclick="setOrientation('landscape')">
-                    🖥️ Landscape<br><small style="font-weight:normal">1920×480</small>
+                    <span class="material-icons">stay_current_landscape</span> Landscape<br><small style="font-weight:normal">1920×480</small>
                 </button>
             </div>
             

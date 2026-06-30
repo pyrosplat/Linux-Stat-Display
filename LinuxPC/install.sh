@@ -60,6 +60,24 @@ echo -e "${GREEN}Installing with Pi IP: ${YELLOW}$PI_IP${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
+# Ask for display orientation
+echo ""
+echo -e "${YELLOW}Please choose your display orientation:${NC}"
+echo "  1) Portrait  (vertical  - 480×1920)"
+echo "  2) Landscape (horizontal - 1920×480)"
+echo ""
+read -p "Choose orientation (1-2, default=1): " ORIENTATION_CHOICE
+ORIENTATION_CHOICE=${ORIENTATION_CHOICE:-1}
+
+if [ "$ORIENTATION_CHOICE" = "2" ]; then
+    ORIENTATION="landscape"
+    echo -e "${GREEN}OK Orientation set to: Landscape${NC}"
+else
+    ORIENTATION="portrait"
+    echo -e "${GREEN}OK Orientation set to: Portrait${NC}"
+fi
+echo ""
+
 # Test connectivity to Pi
 echo -e "${BLUE}→ Testing connection to Raspberry Pi...${NC}"
 if timeout 2 ping -c 1 "$PI_IP" &> /dev/null; then
@@ -70,6 +88,37 @@ else
 fi
 echo ""
 
+# Detect SteamOS / immutable OS
+IS_STEAMOS=false
+if [ -f /etc/os-release ] && grep -qi "steamos\|holo" /etc/os-release 2>/dev/null; then
+    IS_STEAMOS=true
+fi
+
+# Set up RAPL permissions for CPU power reading
+echo -e "${BLUE}→ Setting up CPU power monitoring...${NC}"
+RAPL_PATH="/sys/devices/virtual/powercap/intel-rapl/intel-rapl:0/energy_uj"
+TMPFILES_CONF="/etc/tmpfiles.d/rapl-read.conf"
+
+if [ -f "$RAPL_PATH" ]; then
+    # Use systemd-tmpfiles to make RAPL readable on every boot
+    # This is cleaner than sudo - no TTY issues with systemd services
+    echo "f $RAPL_PATH 0444 root root -" | sudo tee "$TMPFILES_CONF" > /dev/null
+
+    # Apply immediately without rebooting
+    sudo systemd-tmpfiles --create "$TMPFILES_CONF"
+
+    # Verify it worked
+    if [ -r "$RAPL_PATH" ]; then
+        echo -e "${GREEN}OK CPU power monitoring enabled${NC}"
+    else
+        echo -e "${YELLOW}⚠ Could not set RAPL permissions - CPU power will show N/A${NC}"
+        sudo rm -f "$TMPFILES_CONF"
+    fi
+else
+    echo -e "${YELLOW}⚠ RAPL interface not found - CPU power will show N/A${NC}"
+fi
+echo ""
+
 # Create directories
 echo -e "${BLUE}→ Creating directories...${NC}"
 mkdir -p ~/.config/systemd/user
@@ -77,17 +126,47 @@ mkdir -p ~/linux-stats
 echo -e "${GREEN}OK Directories created${NC}"
 echo ""
 
+# Save orientation preference to config
+cat > ~/linux-stats/config.json << CONF_EOF
+{
+    "pi_ip": "$PI_IP",
+    "orientation": "$ORIENTATION"
+}
+CONF_EOF
+echo -e "${GREEN}OK Config saved (orientation: $ORIENTATION)${NC}"
+echo ""
+
+# Set up Python venv (required on SteamOS - pip is blocked system-wide)
+echo -e "${BLUE}→ Setting up Python virtual environment...${NC}"
+if [ ! -d ~/linux-stats/venv ]; then
+    python3 -m venv ~/linux-stats/venv
+    echo -e "${GREEN}OK Virtual environment created${NC}"
+else
+    echo -e "${GREEN}OK Virtual environment already exists${NC}"
+fi
+~/linux-stats/venv/bin/pip install --quiet requests
+echo -e "${GREEN}OK Python dependencies installed${NC}"
+echo ""
+
+PYTHON_BIN="$HOME/linux-stats/venv/bin/python3"
+
 # Create FPS Logger Script
 echo -e "${BLUE}→ Creating MangoHud FPS logger...${NC}"
 cat > ~/linux-stats/fps_logger.sh << 'EOF'
 #!/bin/bash
 
 FPS_FILE="/tmp/fps.txt"
-WATCH_DIR="$HOME"
+# SteamOS writes MangoHud CSVs to ~/.local/share/MangoHud/
+# Bazzite/other distros write to $HOME directly - check both
+WATCH_DIRS=("$HOME/.local/share/MangoHud" "$HOME")
 
 while true; do
-    # Find the most recent CSV file with date-time pattern (MangoHud format)
-    latest_csv=$(ls -t "$WATCH_DIR"/*_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9].csv 2>/dev/null | head -1)
+    latest_csv=""
+    for WATCH_DIR in "${WATCH_DIRS[@]}"; do
+        candidate=$(ls -t "$WATCH_DIR"/*_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9].csv 2>/dev/null | head -1)
+        if [ -n "$candidate" ]; then latest_csv="$candidate"; break; fi
+    done
+    # latest_csv now holds the most recent MangoHud CSV from either location
     
     if [ -f "$latest_csv" ]; then
         # Check if file was modified in the last 3 seconds (active game)
@@ -117,16 +196,35 @@ chmod +x ~/linux-stats/fps_logger.sh
 echo -e "${GREEN}OK FPS logger created${NC}"
 echo ""
 
+# Create MangoHud config - FPS only, hidden overlay, auto-logging
+echo -e "${BLUE}→ Configuring MangoHud...${NC}"
+mkdir -p ~/.config/MangoHud
+cat > ~/.config/MangoHud/MangoHud.conf << 'MANGOHUD_EOF'
+# Stats Display - MangoHud config
+# Overlay is hidden (no_display=1) but logs FPS continuously in the background
+# Toggle overlay visibility with Shift+F12 if needed
+
+no_display=1
+fps
+
+# Auto-logging - writes CSV continuously without needing Shift+F2
+log_interval=500
+output_folder=~/.local/share/MangoHud
+MANGOHUD_EOF
+echo -e "${GREEN}OK MangoHud configured (FPS-only, auto-logging enabled)${NC}"
+echo ""
+
 # Create CSV Cleanup Script
 echo -e "${BLUE}→ Creating CSV cleanup script...${NC}"
 cat > ~/linux-stats/cleanup_fps_logs.sh << 'EOF'
 #!/bin/bash
 
-WATCH_DIR="$HOME"
 CLEANUP_DELAY=30  # Seconds after logging stops before cleanup
+# Check both MangoHud log locations
+WATCH_DIRS=("$HOME/.local/share/MangoHud" "$HOME")
 
 while true; do
-    # Find all CSV files with date-time pattern in home directory
+    for WATCH_DIR in "${WATCH_DIRS[@]}"; do
     for csv_file in "$WATCH_DIR"/*_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9].csv; do
         if [ -f "$csv_file" ]; then
             # Check how old the file is (last modified time)
@@ -138,6 +236,7 @@ while true; do
             fi
         fi
     done
+    done  # end WATCH_DIRS loop
     
     sleep 10
 done
@@ -218,7 +317,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 $HOME/linux-stats/stat_sender.py
+ExecStart=$HOME/linux-stats/venv/bin/python3 $HOME/linux-stats/stat_sender.py
 Restart=always
 RestartSec=10
 
@@ -276,6 +375,10 @@ cat > ~/linux-stats/uninstall.sh << 'EOF'
 #!/bin/bash
 
 echo "Uninstalling Linux PC Stats Display..."
+
+# Remove RAPL tmpfiles rule
+sudo rm -f /etc/tmpfiles.d/rapl-read.conf
+echo "OK Removed CPU power tmpfiles rule"
 
 # Stop and disable services
 systemctl --user stop fps-logger.service fps-cleanup.service stats-sender.service
