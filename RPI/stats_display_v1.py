@@ -20,8 +20,26 @@ app = Flask(__name__)
 # ============================================================
 DEFAULT_THEME = "dark"  # Options: dark, light, matrix, retro, nord, dracula, bw, steam
 DEFAULT_ORIENTATION = "portrait"  # Options: portrait (480x1920), landscape (1920x480)
-CUSTOM_ART_FOLDER = Path.home() / "game_art"  # Folder for custom game artwork
 UPDATE_INTERVAL_MS = 500  # Client polling interval in milliseconds
+
+# ── Consolidated directory layout ─────────────────────────────────────────
+# Everything the app owns lives under ~/stats-display/, so nothing is
+# scattered across /opt, loose files in $HOME, etc:
+#
+#   ~/stats-display/
+#     app/            <- this script + start_optimized.sh (WorkingDirectory)
+#     scripts/        <- rotate-*.sh, restart/stop/status-display.sh
+#     state/          <- orientation.txt (persisted orientation, read at boot)
+#     game_art/       <- custom game artwork
+#
+# System-level files install.sh still has to place in OS-mandated locations
+# (systemd unit, sudoers rule, lightdm autologin config, openbox autostart)
+# are NOT part of this tree, since those locations aren't optional.
+STATS_DISPLAY_ROOT = Path.home() / "stats-display"
+SCRIPTS_DIR = STATS_DISPLAY_ROOT / "scripts"
+STATE_DIR = STATS_DISPLAY_ROOT / "state"
+ORIENTATION_STATE_FILE = STATE_DIR / "orientation.txt"
+CUSTOM_ART_FOLDER = STATS_DISPLAY_ROOT / "game_art"  # Folder for custom game artwork
 
 # Steam API Configuration
 STEAM_API_BASE = "https://api.steampowered.com"
@@ -29,8 +47,10 @@ STEAMDB_API_BASE = "https://steamdb.info/api"
 GAME_NAME_CACHE_DURATION = 3600  # Cache game names for 1 hour
 PLAYER_COUNT_CACHE_DURATION = 60  # Cache player counts for 1 minute
 
-# Create custom art folder if it doesn't exist
-CUSTOM_ART_FOLDER.mkdir(exist_ok=True)
+# Create the app's directory tree if it doesn't exist yet (parents=True
+# covers a from-scratch checkout before install.sh has run mkdir itself)
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+CUSTOM_ART_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # Game name and player count caches
 _game_name_cache = {}  # {appid: (name, timestamp)}
@@ -160,69 +180,88 @@ HTML_TEMPLATE = """
            The Pi layout uses fixed px dimensions and overflow:hidden which
            blocks scrolling on phones. When a real mobile browser loads the
            page we reset all of that and switch to a single-column card layout.
+
+           IMPORTANT: this used to be gated on `@media (max-width: 768px)`,
+           but the portrait kiosk display is ITSELF 480px wide, so that media
+           query always matched the product's own screen too - it forced
+           `height: auto` (breaking the fixed 1920px portrait height so the
+           display never filled the screen) and resized `.settings-panel` to
+           85vw without updating its `right` offset (leaving a visible sliver
+           of the "hidden" panel on screen). Gating on a `.mobile-view` class
+           that's only added via real user-agent sniffing (see JS below)
+           fixes both issues, since the Pi's Firefox kiosk reports a desktop
+           user-agent regardless of screen width.
         ──────────────────────────────────────────────────────────────────── */
-        @media screen and (max-width: 768px) {
-            body, body.orientation-portrait, body.orientation-landscape {
-                width: 100% !important;
-                height: auto !important;
-                overflow-y: auto !important;
-                overflow-x: hidden !important;
-                -webkit-overflow-scrolling: touch;
-            }
-            .container,
-            body.orientation-portrait .container,
-            body.orientation-landscape .container {
-                display: flex !important;
-                flex-direction: column !important;
-                width: 100% !important;
-                height: auto !important;
-                padding: 10px !important;
-                gap: 12px !important;
-                overflow: visible !important;
-            }
-            .stat-card,
-            body.orientation-portrait .stat-card,
-            body.orientation-landscape .stat-card {
-                width: 100% !important;
-                min-height: auto !important;
-                height: auto !important;
-                padding: 14px !important;
-                box-sizing: border-box !important;
-            }
-            .game-card,
-            body.orientation-portrait .game-card,
-            body.orientation-landscape .game-card {
-                width: 100% !important;
-                height: auto !important;
-                min-height: auto !important;
-                padding: 14px !important;
-                box-sizing: border-box !important;
-            }
-            .game-art-container,
-            body.orientation-portrait .game-art-container,
-            body.orientation-landscape .game-art-container {
-                height: 200px !important;
-            }
-            .gauge-container,
-            body.orientation-portrait .gauge-container,
-            body.orientation-landscape .gauge-container {
-                flex-direction: row !important;
-                align-items: center !important;
-                gap: 16px !important;
-            }
-            .circular-gauge,
-            body.orientation-portrait .circular-gauge,
-            body.orientation-landscape .circular-gauge {
-                width: 110px !important;
-                height: 110px !important;
-                flex-shrink: 0 !important;
-            }
-            .stat-details {
-                flex: 1 !important;
-            }
-            .settings-panel {
-                width: 85vw !important;
-            }
+        body.mobile-view,
+        body.mobile-view.orientation-portrait,
+        body.mobile-view.orientation-landscape {
+            width: 100% !important;
+            height: auto !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        body.mobile-view .container,
+        body.mobile-view.orientation-portrait .container,
+        body.mobile-view.orientation-landscape .container {
+            display: flex !important;
+            flex-direction: column !important;
+            width: 100% !important;
+            height: auto !important;
+            padding: 10px !important;
+            gap: 12px !important;
+            overflow: visible !important;
+        }
+        body.mobile-view .stat-card,
+        body.mobile-view.orientation-portrait .stat-card,
+        body.mobile-view.orientation-landscape .stat-card {
+            width: 100% !important;
+            min-height: auto !important;
+            height: auto !important;
+            padding: 14px !important;
+            box-sizing: border-box !important;
+        }
+        body.mobile-view .game-card,
+        body.mobile-view.orientation-portrait .game-card,
+        body.mobile-view.orientation-landscape .game-card {
+            width: 100% !important;
+            height: auto !important;
+            min-height: auto !important;
+            padding: 14px !important;
+            box-sizing: border-box !important;
+        }
+        body.mobile-view .game-art-container,
+        body.mobile-view.orientation-portrait .game-art-container,
+        body.mobile-view.orientation-landscape .game-art-container {
+            height: 200px !important;
+        }
+        body.mobile-view .gauge-container,
+        body.mobile-view.orientation-portrait .gauge-container,
+        body.mobile-view.orientation-landscape .gauge-container {
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 16px !important;
+        }
+        body.mobile-view .circular-gauge,
+        body.mobile-view.orientation-portrait .circular-gauge,
+        body.mobile-view.orientation-landscape .circular-gauge {
+            width: 110px !important;
+            height: 110px !important;
+            flex-shrink: 0 !important;
+        }
+        body.mobile-view .stat-details {
+            flex: 1 !important;
+        }
+        /* Mobile panel width override - only for real phones. right offset
+           is handled separately below so the panel still hides fully. */
+        body.mobile-view .settings-panel {
+            width: 85vw !important;
+        }
+        body.mobile-view.orientation-portrait .settings-panel {
+            right: -85vw !important;
+        }
+        body.mobile-view.orientation-portrait .settings-panel.open {
+            right: 0 !important;
         }
         
         body.orientation-portrait {
@@ -1175,7 +1214,17 @@ HTML_TEMPLATE = """
         document.querySelector(`[data-theme="${savedTheme}"]`)?.classList.add('active');
         document.querySelector(`[data-physical="${savedOrientation}"]`)?.classList.add('active');
         document.querySelector(`[data-gauge="${savedGaugeMode}"]`)?.classList.add('active');
-        
+
+        // Detect a REAL mobile browser (phone/tablet) via user-agent, not
+        // viewport width. The kiosk display itself is 480px wide in portrait
+        // mode, so a width-based media query would incorrectly treat the
+        // product's own screen as "mobile" too. Firefox on the Pi reports a
+        // desktop user-agent regardless of screen size, so this check only
+        // ever matches when someone opens the URL from an actual phone.
+        if (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            document.body.classList.add('mobile-view');
+        }
+
         function toggleSettings() {
             document.getElementById('settingsPanel').classList.toggle('open');
         }
@@ -2045,33 +2094,20 @@ def serve_custom_art(filename):
 
 @app.route('/api/settings/orientation', methods=['GET'])
 def get_orientation_setting():
-    """Get current orientation setting from boot config"""
-    import subprocess
+    """Get current orientation setting from the persisted state file"""
     try:
-        # Check boot config for display_rotate value
-        config_file = None
-        if Path('/boot/firmware/config.txt').exists():
-            config_file = '/boot/firmware/config.txt'
-        elif Path('/boot/config.txt').exists():
-            config_file = '/boot/config.txt'
-        
-        if config_file:
-            with open(config_file, 'r') as f:
-                for line in f:
-                    if line.strip().startswith('display_rotate='):
-                        rotation = int(line.split('=')[1].strip())
-                        orientation = 'landscape' if rotation == 1 else 'portrait'
-                        return jsonify({
-                            'orientation': orientation,
-                            'rotation': rotation,
-                            'config_file': config_file
-                        })
-        
-        # Default if not set
+        if ORIENTATION_STATE_FILE.exists():
+            orientation = ORIENTATION_STATE_FILE.read_text().strip()
+            if orientation in ('portrait', 'landscape'):
+                return jsonify({
+                    'orientation': orientation,
+                    'state_file': str(ORIENTATION_STATE_FILE)
+                })
+
+        # No state file yet (fresh install) - fall back to the compiled-in default
         return jsonify({
             'orientation': DEFAULT_ORIENTATION,
-            'rotation': 0,
-            'config_file': config_file or 'not found'
+            'state_file': str(ORIENTATION_STATE_FILE) + ' (not yet created)'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2079,25 +2115,22 @@ def get_orientation_setting():
 
 @app.route('/api/settings/orientation', methods=['POST'])
 def set_orientation():
-    """Set orientation using xrandr rotation scripts"""
+    """Rotate the display now, and persist the choice so the boot-time
+    rotation script (scripts/rotate-boot.sh) applies the same orientation
+    on every future boot. No sudo/systemd-unit editing needed - the boot
+    script just reads this same state file."""
     import subprocess
     try:
         data = request.get_json()
         orientation = data.get('orientation', 'portrait')
-        
-        # Get user home directory and scripts folder
-        user_home = Path.home()
-        scripts_dir = user_home / 'stats-display'
-        
-        # Determine which rotation script to use
-        if orientation == 'landscape':
-            rotation_script = scripts_dir / 'rotate-landscape.sh'
-        else:
-            rotation_script = scripts_dir / 'rotate-portrait.sh'
-        
+        if orientation not in ('portrait', 'landscape'):
+            return jsonify({'error': f'Invalid orientation: {orientation}'}), 400
+
+        rotation_script = SCRIPTS_DIR / f'rotate-{orientation}.sh'
+
         if not rotation_script.exists():
             return jsonify({'error': f'Rotation script not found: {rotation_script}'}), 404
-        
+
         # Run the rotation script immediately
         result = subprocess.run(
             ['bash', str(rotation_script)],
@@ -2106,62 +2139,24 @@ def set_orientation():
             text=True,
             timeout=15
         )
-        
+
         if result.returncode != 0:
             return jsonify({
                 'error': f'Rotation script failed: {result.stderr}',
                 'success': False
             }), 500
-        
-        # Update the systemd service to use the correct rotation script on next boot
-        try:
-            service_file = Path('/etc/systemd/system/stats-display.service')
-            if service_file.exists():
-                with open(service_file, 'r') as f:
-                    service_content = f.read()
-                
-                # Replace the ExecStartPre line with the new rotation script (boot version)
-                if orientation == 'landscape':
-                    new_content = service_content.replace(
-                        'stats-display/rotate-portrait-boot.sh',
-                        'stats-display/rotate-landscape-boot.sh'
-                    )
-                    # Also handle old format without -boot
-                    new_content = new_content.replace(
-                        'stats-display/rotate-portrait.sh',
-                        'stats-display/rotate-landscape-boot.sh'
-                    )
-                else:
-                    new_content = service_content.replace(
-                        'stats-display/rotate-landscape-boot.sh',
-                        'stats-display/rotate-portrait-boot.sh'
-                    )
-                    # Also handle old format without -boot
-                    new_content = new_content.replace(
-                        'stats-display/rotate-landscape.sh',
-                        'stats-display/rotate-portrait-boot.sh'
-                    )
-                
-                # Write to temp file first
-                temp_file = '/tmp/stats-display.service.tmp'
-                with open(temp_file, 'w') as f:
-                    f.write(new_content)
-                
-                # Copy with sudo
-                subprocess.run(['sudo', 'cp', temp_file, str(service_file)], check=True)
-                subprocess.run(['sudo', 'systemctl', 'daemon-reload'], check=True)
-                subprocess.run(['sudo', 'rm', temp_file], check=True)
-        except Exception as e:
-            print(f"Warning: Could not update service file: {e}")
-            # Non-fatal - rotation still worked
-        
+
+        # Persist the choice for next boot
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        ORIENTATION_STATE_FILE.write_text(orientation)
+
         return jsonify({
             'success': True,
             'orientation': orientation,
             'message': f'Display rotated to {orientation}. Changes will persist on reboot.',
             'reboot_required': False
         })
-        
+
     except subprocess.TimeoutExpired:
         return jsonify({'error': 'Rotation script timed out'}), 500
     except Exception as e:
