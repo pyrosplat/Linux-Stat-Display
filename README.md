@@ -53,10 +53,11 @@ Works on Bazzite, SteamOS, and other Linux distributions.
 ### 1. Install on Raspberry Pi
 
 ```bash
-unzip RPI_Stats_Display.zip
-cd RPI_Stats_Display/RPI
+cd ~
+sudo apt update && sudo apt install -y git
+git clone https://github.com/pyrosplat/Linux-Stat-Display.git
+cd Linux-Stat-Display/RPI
 chmod +x install.sh
-sed -i 's/\r$//' install.sh
 sudo ./install.sh
 ```
 
@@ -77,9 +78,9 @@ The stats display will auto-start on boot.
 ### 2. Install on Linux PC
 
 ```bash
-unzip RPI_Stats_Display.zip
-cd RPI_Stats_Display/LinuxPC
-sed -i 's/\r$//' install.sh
+sudo apt update && sudo apt install -y git
+git clone https://github.com/pyrosplat/Linux-Stat-Display.git
+cd Linux-Stat-Display/LinuxPC
 chmod +x install.sh
 ./install.sh
 ```
