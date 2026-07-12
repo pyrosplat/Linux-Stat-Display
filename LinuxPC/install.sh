@@ -36,7 +36,7 @@ echo ""
 while true; do
     echo -e "${YELLOW}Please enter your Raspberry Pi's IP address:${NC}"
     echo -e "${BLUE}(Example: 192.168.1.100)${NC}"
-    read -p "Pi IP: " PI_IP
+    read -p "Pi IP: " PI_IP < /dev/tty
     
     if [ -z "$PI_IP" ]; then
         echo -e "${RED}ERROR: Error: IP address cannot be empty${NC}"
@@ -66,7 +66,7 @@ echo -e "${YELLOW}Please choose your display orientation:${NC}"
 echo "  1) Portrait  (vertical  - 480×1920)"
 echo "  2) Landscape (horizontal - 1920×480)"
 echo ""
-read -p "Choose orientation (1-2, default=1): " ORIENTATION_CHOICE
+read -p "Choose orientation (1-2, default=1): " ORIENTATION_CHOICE < /dev/tty
 ORIENTATION_CHOICE=${ORIENTATION_CHOICE:-1}
 
 if [ "$ORIENTATION_CHOICE" = "2" ]; then
@@ -261,10 +261,24 @@ for location in "$(pwd)/stat_sender_v1.py" "$(pwd)/stats_sender_v1.py" "$HOME/st
 done
 
 if [ "$SENDER_FOUND" = false ]; then
+    # No local copy found - likely running standalone via `curl | bash`
+    # without a repo checkout next to it, so fetch it from GitHub directly.
+    echo -e "${BLUE}→ No local copy found - downloading from GitHub...${NC}"
+    SENDER_URL="https://raw.githubusercontent.com/pyrosplat/Linux-Stat-Display/main/LinuxPC/stat_sender_v1.py"
+    if curl -fsSL "$SENDER_URL" -o ~/linux-stats/stat_sender.py; then
+        SENDER_FOUND=true
+        echo -e "${GREEN}OK Stats sender downloaded${NC}"
+    fi
+fi
+
+if [ "$SENDER_FOUND" = false ]; then
     echo -e "${RED}ERROR: Error: stat_sender_v1.py not found${NC}"
-    echo -e "${YELLOW}  Please ensure stat_sender_v1.py is in the same directory as this installer${NC}"
+    echo -e "${YELLOW}  Either run this installer from inside a cloned repo, or check your network connection${NC}"
     exit 1
 fi
+
+# Normalize line endings in case of a Windows-edited or CRLF source file
+sed -i 's/\r$//' ~/linux-stats/stat_sender.py
 
 # Update PI_IP in the sender script
 if [ -f ~/linux-stats/stat_sender.py ]; then

@@ -34,6 +34,12 @@ STATS_SCRIPT="stats_display_v1.py"
 CURRENT_USER="${SUDO_USER:-$USER}"
 USER_HOME=$(getent passwd "$CURRENT_USER" | cut -d: -f6)
 
+# Raw GitHub URL for the companion script, used only as a fallback when this
+# installer is run standalone (e.g. via `curl | bash`) without a full repo
+# checkout sitting next to it.
+REPO_RAW_BASE="https://raw.githubusercontent.com/pyrosplat/Linux-Stat-Display/main"
+STATS_SCRIPT_URL="$REPO_RAW_BASE/RPI/stats_display_v1.py"
+
 # Consolidated app directory tree (all under the user's home, all owned by
 # the user - no more /opt with root ownership complicating things)
 APP_ROOT="$USER_HOME/stats-display"
@@ -79,7 +85,7 @@ echo "Display orientation options:"
 echo "  1) Portrait (vertical - 480x1920)"
 echo "  2) Landscape (horizontal - 1920x480)"
 echo ""
-read -p "Choose orientation (1-2, default=1): " ORIENTATION_CHOICE
+read -p "Choose orientation (1-2, default=1): " ORIENTATION_CHOICE < /dev/tty
 ORIENTATION_CHOICE=${ORIENTATION_CHOICE:-1}
 
 if [ "$ORIENTATION_CHOICE" = "2" ]; then
@@ -138,16 +144,26 @@ print_success "Directory tree created at $APP_ROOT"
 print_header "Installing Stats Display Script"
 if [ -f "$STATS_SCRIPT" ]; then
     cp "$STATS_SCRIPT" "$APP_DIR/stats_display.py"
-    chmod +x "$APP_DIR/stats_display.py"
-    print_success "Stats display script installed"
+    print_success "Stats display script installed (found locally)"
 elif [ -f "/home/$CURRENT_USER/$STATS_SCRIPT" ]; then
     cp "/home/$CURRENT_USER/$STATS_SCRIPT" "$APP_DIR/stats_display.py"
-    chmod +x "$APP_DIR/stats_display.py"
-    print_success "Stats display script installed"
+    print_success "Stats display script installed (found in home directory)"
 else
-    print_warning "Stats script not found in current directory"
-    print_info "Please place $STATS_SCRIPT in $APP_DIR/stats_display.py and make it executable"
+    # No local copy found - this installer is likely being run standalone
+    # (e.g. `curl -fsSL .../install.sh | sudo bash`) without a repo checkout
+    # next to it, so fetch the companion script directly from GitHub.
+    print_info "No local copy found - downloading from GitHub..."
+    if curl -fsSL "$STATS_SCRIPT_URL" -o "$APP_DIR/stats_display.py"; then
+        print_success "Stats display script downloaded"
+    else
+        print_error "Could not download stats display script from $STATS_SCRIPT_URL"
+        print_info "Either run this installer from inside a cloned repo, or check your network connection"
+        exit 1
+    fi
 fi
+# Normalize line endings in case of a Windows-edited or CRLF source file
+sed -i 's/\r$//' "$APP_DIR/stats_display.py"
+chmod +x "$APP_DIR/stats_display.py"
 chown "$CURRENT_USER:$CURRENT_USER" "$APP_DIR/stats_display.py" 2>/dev/null || true
 
 #==============================================================================
