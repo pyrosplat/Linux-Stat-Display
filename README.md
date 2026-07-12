@@ -61,18 +61,10 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-The installer will:
-- Install Firefox ESR browser
-- Configure display rotation
-- Create rotation scripts in `~/stats-display/`
-- Set up systemd service for auto-start
-- Ask for orientation preference (Portrait or Landscape)
-
 After install:
 ```bash
 sudo reboot
 ```
-
 The stats display will auto-start on boot.
 
 ### 2. Install on Linux PC
