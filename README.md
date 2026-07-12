@@ -26,7 +26,7 @@ Real-time system stats from your Linux gaming PC, displayed on a Raspberry Pi to
 
 ## What you need
 
-- A Linux gaming PC (Bazzite, SteamOS, Ubuntu, Fedora, Arch, etc.)
+- A Linux gaming PC running Bazzite or SteamOS
 - A Raspberry Pi 3 or newer (4/5 recommended)
 - A touchscreen: 480×1920 or 1920×480 - [the display used in this project](https://amzn.to/3YiP0RT)
 - Both devices on the same network
@@ -37,7 +37,6 @@ Real-time system stats from your Linux gaming PC, displayed on a Raspberry Pi to
 **On the Raspberry Pi:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pyrosplat/Linux-Stat-Display/main/RPI/install.sh -o /tmp/rpi-install.sh && sudo bash /tmp/rpi-install.sh
-sudo reboot
 ```
 
 **On the Linux gaming PC:**
