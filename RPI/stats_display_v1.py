@@ -39,6 +39,10 @@ STATS_DISPLAY_ROOT = Path.home() / "stats-display"
 SCRIPTS_DIR = STATS_DISPLAY_ROOT / "scripts"
 STATE_DIR = STATS_DISPLAY_ROOT / "state"
 ORIENTATION_STATE_FILE = STATE_DIR / "orientation.txt"
+BOOT_ANIM_STATE_FILE = STATE_DIR / "boot_animation.txt"  # off | once | loop
+BOOT_ANIM_DIR = STATS_DISPLAY_ROOT / "boot_animation"  # holds custom.html override
+CUSTOM_BOOT_ANIM_FILE = BOOT_ANIM_DIR / "custom.html"
+DEFAULT_BOOT_ANIM_MODE = "off"
 CUSTOM_ART_FOLDER = STATS_DISPLAY_ROOT / "game_art"  # Folder for custom game artwork
 
 # Steam API Configuration
@@ -51,6 +55,7 @@ PLAYER_COUNT_CACHE_DURATION = 60  # Cache player counts for 1 minute
 # covers a from-scratch checkout before install.sh has run mkdir itself)
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 CUSTOM_ART_FOLDER.mkdir(parents=True, exist_ok=True)
+BOOT_ANIM_DIR.mkdir(parents=True, exist_ok=True)
 
 # Game name and player count caches
 _game_name_cache = {}  # {appid: (name, timestamp)}
@@ -74,6 +79,174 @@ latest_stats = {
 
 # Supported image formats for custom art
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
+
+# ============================================================
+# BOOT ANIMATION TEMPLATE
+# ============================================================
+# Rendered by index() when boot_animation.txt is 'once' or 'loop'.
+# 'once' plays the sequence then redirects to '/?skip_boot=1'.
+# 'loop' just replays forever (never hands off to the dashboard).
+BOOT_HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Boot Sequence</title>
+<style>
+  @font-face {
+    font-family: 'BootMono';
+    src: local('JetBrains Mono'), local('Menlo'), local('Consolas');
+  }
+  :root {
+    --bg: #05070b; --grid: #0f1e26; --cyan: #00e5ff;
+    --amber: #ffb400; --violet: #6c5ce7; --text: #d7e4ea; --text-dim: #4d6470;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100vw; height: 100vh; background: var(--bg); overflow: hidden;
+    font-family: 'BootMono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    color: var(--text);
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px; opacity: 0.35; pointer-events: none;
+  }
+  body::after {
+    content: ''; position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, var(--bg) 100%);
+    pointer-events: none;
+  }
+  #stage { position: relative; width: 100%; height: 100%; display: flex; }
+  #stage.portrait { flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 12vh; }
+  #stage.landscape { flex-direction: row; align-items: center; justify-content: flex-start; padding-left: 6vw; gap: 5vw; }
+  .core-wrap { position: relative; flex-shrink: 0; }
+  .portrait .core-wrap { width: 60vw; max-width: 340px; aspect-ratio: 1; }
+  .landscape .core-wrap { width: 30vh; max-width: 340px; aspect-ratio: 1; }
+  .core-wrap svg { width: 100%; height: 100%; overflow: visible; }
+  .frag { transform-origin: 100px 100px; opacity: 0; filter: drop-shadow(0 0 6px rgba(0,229,255,0.5)); }
+  .frag.assemble { animation: fragIn 0.6s cubic-bezier(.2,.9,.3,1.3) forwards; }
+  @keyframes fragIn { 0% { opacity: 0; transform: translate(var(--fx), var(--fy)) scale(0.4) rotate(var(--fr)); } 100% { opacity: 1; transform: translate(0,0) scale(1) rotate(0deg); } }
+  .core-ring { fill: none; stroke: var(--cyan); stroke-width: 1.5; opacity: 0; stroke-dasharray: 4 6; }
+  .core-ring.spin-in { animation: ringIn 1.4s ease-out 0.7s forwards, ringSpin 6s linear 0.7s infinite; }
+  @keyframes ringIn { to { opacity: 0.55; } }
+  @keyframes ringSpin { to { transform: rotate(360deg); } }
+  .core-pulse { fill: var(--cyan); opacity: 0; }
+  .core-pulse.pulse-in { animation: pulseIn 0.4s ease-out 0.55s forwards, pulseBeat 1.8s ease-in-out 1s infinite; }
+  @keyframes pulseIn { to { opacity: 1; } }
+  @keyframes pulseBeat { 0%, 100% { opacity: 0.85; filter: drop-shadow(0 0 8px var(--cyan)); } 50% { opacity: 1; filter: drop-shadow(0 0 22px var(--cyan)); } }
+  .log-wrap { font-size: clamp(11px, 1.6vh, 15px); line-height: 1.9; letter-spacing: 0.02em; }
+  .portrait .log-wrap { width: 78vw; max-width: 420px; margin-top: 6vh; text-align: left; }
+  .landscape .log-wrap { width: 46vw; max-width: 620px; text-align: left; }
+  .log-line { white-space: nowrap; overflow: hidden; width: 0; color: var(--text-dim); }
+  .log-line .status { color: var(--cyan); }
+  .log-line.amber .status { color: var(--amber); }
+  .log-line.typed { color: var(--text); }
+  .log-line.reveal { animation: typeLine 0.5s steps(28, end) forwards; }
+  @keyframes typeLine { to { width: var(--tw, 100%); } }
+  .progress-outer { position: absolute; height: 3px; background: var(--grid); }
+  .portrait .progress-outer { bottom: 8vh; left: 11vw; right: 11vw; }
+  .landscape .progress-outer { bottom: 9vh; left: 6vw; right: 8vw; }
+  .progress-inner { height: 100%; width: 0%; background: linear-gradient(90deg, var(--violet), var(--cyan)); box-shadow: 0 0 10px var(--cyan); transition: width 0.4s linear; }
+  .progress-label { position: absolute; font-size: clamp(9px, 1.2vh, 12px); color: var(--text-dim); letter-spacing: 0.15em; }
+  .portrait .progress-label { bottom: 5.2vh; left: 11vw; }
+  .landscape .progress-label { bottom: 5.8vh; left: 6vw; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="core-wrap">
+    <svg viewBox="0 0 200 200">
+      <polygon class="frag" style="--fx:-90px; --fy:-70px; --fr:-40deg" points="100,40 140,65 140,65 100,90 60,65" fill="#0d2530" stroke="#00e5ff" stroke-width="1.5"/>
+      <polygon class="frag" style="--fx:90px; --fy:-70px; --fr:40deg" points="140,65 140,115 100,140 100,90" fill="#0d2530" stroke="#00e5ff" stroke-width="1.5"/>
+      <polygon class="frag" style="--fx:90px; --fy:70px; --fr:40deg" points="140,115 100,140 60,115 100,90" fill="#0d2530" stroke="#00e5ff" stroke-width="1.5"/>
+      <polygon class="frag" style="--fx:0px; --fy:100px; --fr:60deg" points="60,115 60,65 100,90 100,140" fill="#0d2530" stroke="#00e5ff" stroke-width="1.5"/>
+      <polygon class="frag" style="--fx:-90px; --fy:70px; --fr:-40deg" points="60,65 100,40 100,90 60,115" fill="#0d2530" stroke="#00e5ff" stroke-width="1.5"/>
+      <circle class="core-pulse" cx="100" cy="90" r="18"/>
+      <polygon class="core-ring" points="100,20 155,52 155,116 100,148 45,116 45,52"/>
+      <polygon class="core-ring" points="100,10 165,47 165,121 100,158 35,121 35,47" style="animation-delay:0.9s"/>
+    </svg>
+  </div>
+  <div class="log-wrap" id="logWrap"></div>
+  <div class="progress-outer"><div class="progress-inner" id="progInner"></div></div>
+  <div class="progress-label" id="progLabel">INITIALIZING</div>
+</div>
+
+<script>
+(function () {
+  var mode = "{{ boot_mode }}";        // 'once' | 'loop', injected by Flask
+  var redirectTo = "/?skip_boot=1";
+
+  var stage = document.getElementById('stage');
+  var logWrap = document.getElementById('logWrap');
+  var progInner = document.getElementById('progInner');
+  var progLabel = document.getElementById('progLabel');
+
+  function applyOrientation() {
+    var portrait = window.innerHeight > window.innerWidth;
+    stage.className = portrait ? 'portrait' : 'landscape';
+  }
+  applyOrientation();
+  window.addEventListener('resize', applyOrientation);
+
+  var lines = [
+    { text: 'MOUNTING STATS DAEMON', status: 'OK' },
+    { text: 'LINKING GPU TELEMETRY', status: 'OK' },
+    { text: 'SYNCING SENSOR ARRAY', status: 'OK' },
+    { text: 'CALIBRATING DISPLAY', status: 'OK' },
+    { text: 'STARTING DASHBOARD', status: 'READY', amber: true }
+  ];
+
+  function runSequence() {
+    logWrap.innerHTML = '';
+    progInner.style.width = '0%';
+    progLabel.textContent = 'INITIALIZING';
+
+    document.querySelectorAll('.frag').forEach(function (f, i) {
+      f.classList.remove('assemble'); void f.offsetWidth;
+      f.style.animationDelay = (i * 0.08) + 's';
+      f.classList.add('assemble');
+    });
+    document.querySelectorAll('.core-ring').forEach(function (r) {
+      r.classList.remove('spin-in'); void r.offsetWidth; r.classList.add('spin-in');
+    });
+    document.querySelectorAll('.core-pulse').forEach(function (p) {
+      p.classList.remove('pulse-in'); void p.offsetWidth; p.classList.add('pulse-in');
+    });
+
+    var delay = 900;
+    lines.forEach(function (line, i) {
+      setTimeout(function () {
+        var div = document.createElement('div');
+        div.className = 'log-line' + (line.amber ? ' amber' : '');
+        div.style.setProperty('--tw', (line.text.length + line.status.length + 6) + 'ch');
+        div.innerHTML = line.text + ' <span class="status">[' + line.status + ']</span>';
+        logWrap.appendChild(div);
+        void div.offsetWidth;
+        div.classList.add('reveal', 'typed');
+
+        var pct = Math.round(((i + 1) / lines.length) * 100);
+        progInner.style.width = pct + '%';
+        progLabel.textContent = pct < 100 ? 'INITIALIZING  ' + pct + '%' : 'READY';
+      }, delay);
+      delay += 550;
+    });
+
+    var totalTime = delay + 1200;
+    if (mode === 'once') {
+      setTimeout(function () { window.location.href = redirectTo; }, totalTime);
+    } else {
+      setTimeout(runSequence, totalTime + 900);
+    }
+  }
+
+  runSequence();
+})();
+</script>
+</body>
+</html>
+"""
 
 # ============================================================
 # HTML/CSS/JS TEMPLATE (Minified for efficiency)
@@ -1005,6 +1178,31 @@ HTML_TEMPLATE = """
             <div class="orientation-option active" data-gauge="usage" onclick="setGaugeMode('usage')"><span class="material-icons">percent</span> Show Usage %</div>
             <div class="orientation-option" data-gauge="temp" onclick="setGaugeMode('temp')"><span class="material-icons">thermostat</span> Show Temperature</div>
         </div>
+
+        <div class="settings-section">
+            <h3><span class="material-icons">power_settings_new</span> Boot Animation</h3>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;"><span class="material-icons">info</span> Plays before the dashboard loads</div>
+            <div class="orientation-option" id="boot-anim-off" data-boot="off" onclick="setBootAnimation('off')">
+                <span class="material-icons">block</span> Off
+            </div>
+            <div class="orientation-option" id="boot-anim-once" data-boot="once" onclick="setBootAnimation('once')">
+                <span class="material-icons">play_arrow</span> Play Once
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Plays, then loads the dashboard</div>
+            </div>
+            <div class="orientation-option" id="boot-anim-loop" data-boot="loop" onclick="setBootAnimation('loop')">
+                <span class="material-icons">repeat</span> Loop
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Plays continuously, dashboard never loads</div>
+            </div>
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));">
+                <div class="theme-option" style="cursor: pointer;" onclick="exportBootAnimation()">
+                    <span class="material-icons">edit</span> Customize Animation...
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin: 4px 0 8px;">Exports an editable copy to <code>~/stats-display/boot_animation/custom.html</code></div>
+                <div class="theme-option" style="cursor: pointer;" onclick="resetBootAnimation()">
+                    <span class="material-icons">restore</span> Reset to Default
+                </div>
+            </div>
+        </div>
         </div> <!-- Close settings-content -->
     </div> <!-- Close settings-panel -->
     
@@ -1388,6 +1586,78 @@ HTML_TEMPLATE = """
             }
         }
         
+        async function exportBootAnimation() {
+            try {
+                const response = await fetch('/api/settings/boot-animation/export-default', { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('Exported to:\n' + data.path + '\n\nEdit that file directly, then reload the boot animation to preview your changes.');
+                } else if (response.status === 409) {
+                    const overwrite = confirm('custom.html already exists. Overwrite it with the default template? (Your edits will be lost)');
+                    if (overwrite) {
+                        const retry = await fetch('/api/settings/boot-animation/export-default?force=true', { method: 'POST' });
+                        const retryData = await retry.json();
+                        if (retryData.success) alert('Reset to default and exported to:\n' + retryData.path);
+                    }
+                } else {
+                    alert('Failed to export: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function resetBootAnimation() {
+            if (!confirm('Discard your custom boot animation and go back to the built-in one?')) return;
+            try {
+                const response = await fetch('/api/settings/boot-animation/reset-default', { method: 'POST' });
+                const data = await response.json();
+                alert(data.message || 'Done.');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function setBootAnimation(mode) {
+            try {
+                const response = await fetch('/api/settings/boot-animation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    document.querySelectorAll('[id^="boot-anim-"]').forEach(function (el) {
+                        el.classList.remove('active');
+                    });
+                    document.getElementById('boot-anim-' + mode).classList.add('active');
+                } else {
+                    alert('Failed to set boot animation: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Reflect the currently persisted boot animation mode when settings panel loads
+        async function loadBootAnimationSetting() {
+            try {
+                const response = await fetch('/api/settings/boot-animation');
+                const data = await response.json();
+                document.querySelectorAll('[id^="boot-anim-"]').forEach(function (el) {
+                    el.classList.remove('active');
+                });
+                const active = document.getElementById('boot-anim-' + data.mode);
+                if (active) active.classList.add('active');
+            } catch (error) {
+                console.error('Failed to load boot animation setting:', error);
+            }
+        }
+        loadBootAnimationSetting();
+
         // Load IP address for settings panel
         async function loadNetworkInfo() {
             try {
@@ -1918,9 +2188,49 @@ def get_player_counts(appid):
 # ROUTES
 # ============================================================
 
+def _get_boot_animation_mode():
+    """Read persisted boot animation mode, falling back to the default."""
+    try:
+        if BOOT_ANIM_STATE_FILE.exists():
+            mode = BOOT_ANIM_STATE_FILE.read_text().strip()
+            if mode in ('off', 'once', 'loop'):
+                return mode
+    except Exception:
+        pass
+    return DEFAULT_BOOT_ANIM_MODE
+
+
+def _get_boot_animation_html():
+    """Return the boot animation source: a user's custom.html if they've
+    dropped one in ~/stats-display/boot_animation/, otherwise the built-in
+    template. Both go through render_template_string so {{ boot_mode }}
+    works in either."""
+    if CUSTOM_BOOT_ANIM_FILE.exists():
+        try:
+            return CUSTOM_BOOT_ANIM_FILE.read_text()
+        except Exception as e:
+            print(f"Failed to read custom boot animation, using default: {e}")
+    return BOOT_HTML_TEMPLATE
+
+
 @app.route('/')
 def index():
-    """Serve the stats display page"""
+    """Serve the stats display page, or the boot animation first if enabled.
+
+    ?skip_boot=1 is what the boot animation's own redirect uses to hand off
+    to the dashboard in 'once' mode, so we don't loop back into the splash.
+    """
+    boot_mode = _get_boot_animation_mode()
+    skip_requested = request.args.get('skip_boot') == '1'
+
+    if boot_mode in ('once', 'loop') and not skip_requested:
+        response = app.make_response(render_template_string(
+            _get_boot_animation_html(),
+            boot_mode=boot_mode
+        ))
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return response
+
     response = app.make_response(render_template_string(
         HTML_TEMPLATE,
         stats=latest_stats,
@@ -2092,6 +2402,14 @@ def serve_custom_art(filename):
     return send_from_directory(CUSTOM_ART_FOLDER, filename)
 
 
+@app.route('/boot_animation_assets/<filename>')
+def serve_boot_animation_asset(filename):
+    """Serve user-supplied images/assets referenced by a custom boot
+    animation (e.g. an icon you dropped into ~/stats-display/boot_animation/).
+    Reference them from custom.html as /boot_animation_assets/<filename>."""
+    return send_from_directory(BOOT_ANIM_DIR, filename)
+
+
 @app.route('/api/settings/orientation', methods=['GET'])
 def get_orientation_setting():
     """Get current orientation setting from the persisted state file"""
@@ -2159,6 +2477,76 @@ def set_orientation():
 
     except subprocess.TimeoutExpired:
         return jsonify({'error': 'Rotation script timed out'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/boot-animation', methods=['GET'])
+def get_boot_animation_setting():
+    """Get current boot animation mode from the persisted state file"""
+    try:
+        return jsonify({
+            'mode': _get_boot_animation_mode(),
+            'state_file': str(BOOT_ANIM_STATE_FILE)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/boot-animation', methods=['POST'])
+def set_boot_animation():
+    """Persist the boot animation mode: off | once | loop"""
+    try:
+        data = request.get_json()
+        mode = data.get('mode', 'off')
+        if mode not in ('off', 'once', 'loop'):
+            return jsonify({'error': f'Invalid mode: {mode}'}), 400
+
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        BOOT_ANIM_STATE_FILE.write_text(mode)
+
+        return jsonify({
+            'success': True,
+            'mode': mode,
+            'message': f'Boot animation set to "{mode}". Takes effect on next boot / dashboard reload.'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/boot-animation/export-default', methods=['POST'])
+def export_default_boot_animation():
+    """Write the built-in boot animation to boot_animation/custom.html so the
+    user has a real starting point to edit, instead of writing HTML from
+    scratch. Won't clobber an existing custom.html unless force=true."""
+    try:
+        force = request.args.get('force') == 'true'
+        if CUSTOM_BOOT_ANIM_FILE.exists() and not force:
+            return jsonify({
+                'error': 'custom.html already exists. Pass ?force=true to overwrite it.',
+                'path': str(CUSTOM_BOOT_ANIM_FILE)
+            }), 409
+
+        BOOT_ANIM_DIR.mkdir(parents=True, exist_ok=True)
+        CUSTOM_BOOT_ANIM_FILE.write_text(BOOT_HTML_TEMPLATE)
+
+        return jsonify({
+            'success': True,
+            'path': str(CUSTOM_BOOT_ANIM_FILE),
+            'message': 'Default boot animation exported. Edit this file directly to customize it.'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/boot-animation/reset-default', methods=['POST'])
+def reset_default_boot_animation():
+    """Delete custom.html so index() falls back to the built-in template again."""
+    try:
+        if CUSTOM_BOOT_ANIM_FILE.exists():
+            CUSTOM_BOOT_ANIM_FILE.unlink()
+            return jsonify({'success': True, 'message': 'Reverted to the built-in boot animation.'})
+        return jsonify({'success': True, 'message': 'Already using the built-in boot animation.'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
