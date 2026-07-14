@@ -1592,13 +1592,13 @@ HTML_TEMPLATE = """
                 const data = await response.json();
 
                 if (data.success) {
-                    alert('Exported to:\n' + data.path + '\n\nEdit that file directly, then reload the boot animation to preview your changes.');
+                    alert('Exported to:\\n' + data.path + '\\n\\nEdit that file directly, then reload the boot animation to preview your changes.');
                 } else if (response.status === 409) {
                     const overwrite = confirm('custom.html already exists. Overwrite it with the default template? (Your edits will be lost)');
                     if (overwrite) {
                         const retry = await fetch('/api/settings/boot-animation/export-default?force=true', { method: 'POST' });
                         const retryData = await retry.json();
-                        if (retryData.success) alert('Reset to default and exported to:\n' + retryData.path);
+                        if (retryData.success) alert('Reset to default and exported to:\\n' + retryData.path);
                     }
                 } else {
                     alert('Failed to export: ' + (data.error || 'Unknown error'));
