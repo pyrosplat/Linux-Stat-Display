@@ -42,7 +42,7 @@ ORIENTATION_STATE_FILE = STATE_DIR / "orientation.txt"
 BOOT_ANIM_STATE_FILE = STATE_DIR / "boot_animation.txt"  # off | once | loop
 BOOT_ANIM_DIR = STATS_DISPLAY_ROOT / "boot_animation"  # holds custom.html override
 CUSTOM_BOOT_ANIM_FILE = BOOT_ANIM_DIR / "custom.html"
-DEFAULT_BOOT_ANIM_MODE = "off"
+DEFAULT_BOOT_ANIM_MODE = "once"
 CUSTOM_ART_FOLDER = STATS_DISPLAY_ROOT / "game_art"  # Folder for custom game artwork
 
 # Steam API Configuration
@@ -152,9 +152,26 @@ BOOT_HTML_TEMPLATE = """
   .progress-label { position: absolute; font-size: clamp(9px, 1.2vh, 12px); color: var(--text-dim); letter-spacing: 0.15em; }
   .portrait .progress-label { bottom: 5.2vh; left: 11vw; }
   .landscape .progress-label { bottom: 5.8vh; left: 6vw; }
+
+  /* Escape hatch: always reachable regardless of mode (especially loop,
+     which never navigates away on its own), so the dashboard/settings
+     panel is never permanently out of reach from the touchscreen. */
+  .skip-btn {
+    position: fixed; top: 14px; right: 14px;
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text-dim);
+    font-size: 16px;
+    text-decoration: none;
+    z-index: 10;
+  }
+  .skip-btn:active { background: rgba(255,255,255,0.15); }
 </style>
 </head>
 <body>
+<a class="skip-btn" href="/?skip_boot=1" aria-label="Skip to dashboard">⚙️</a>
 <div id="stage">
   <div class="core-wrap">
     <svg viewBox="0 0 200 200">
@@ -247,6 +264,15 @@ BOOT_HTML_TEMPLATE = """
 </body>
 </html>
 """
+
+# Always leave a real, editable copy at boot_animation/custom.html so users
+# can just open and edit it directly - no button needed to "unlock" editing.
+# Only written if it doesn't already exist, so we never clobber someone's edits.
+if not CUSTOM_BOOT_ANIM_FILE.exists():
+    try:
+        CUSTOM_BOOT_ANIM_FILE.write_text(BOOT_HTML_TEMPLATE)
+    except Exception as e:
+        print(f"Could not write default boot animation to {CUSTOM_BOOT_ANIM_FILE}: {e}")
 
 # ============================================================
 # HTML/CSS/JS TEMPLATE (Minified for efficiency)
@@ -1194,10 +1220,7 @@ HTML_TEMPLATE = """
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Plays continuously, dashboard never loads</div>
             </div>
             <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));">
-                <div class="theme-option" style="cursor: pointer;" onclick="exportBootAnimation()">
-                    <span class="material-icons">edit</span> Customize Animation...
-                </div>
-                <div style="font-size: 11px; color: var(--text-muted); margin: 4px 0 8px;">Exports an editable copy to <code>~/stats-display/boot_animation/custom.html</code></div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">An editable copy already lives at <code>~/stats-display/boot_animation/custom.html</code> - edit it directly to customize.</div>
                 <div class="theme-option" style="cursor: pointer;" onclick="resetBootAnimation()">
                     <span class="material-icons">restore</span> Reset to Default
                 </div>
@@ -1586,28 +1609,6 @@ HTML_TEMPLATE = """
             }
         }
         
-        async function exportBootAnimation() {
-            try {
-                const response = await fetch('/api/settings/boot-animation/export-default', { method: 'POST' });
-                const data = await response.json();
-
-                if (data.success) {
-                    alert('Exported to:\\n' + data.path + '\\n\\nEdit that file directly, then reload the boot animation to preview your changes.');
-                } else if (response.status === 409) {
-                    const overwrite = confirm('custom.html already exists. Overwrite it with the default template? (Your edits will be lost)');
-                    if (overwrite) {
-                        const retry = await fetch('/api/settings/boot-animation/export-default?force=true', { method: 'POST' });
-                        const retryData = await retry.json();
-                        if (retryData.success) alert('Reset to default and exported to:\\n' + retryData.path);
-                    }
-                } else {
-                    alert('Failed to export: ' + (data.error || 'Unknown error'));
-                }
-            } catch (error) {
-                alert('Error: ' + error.message);
-            }
-        }
-
         async function resetBootAnimation() {
             if (!confirm('Discard your custom boot animation and go back to the built-in one?')) return;
             try {
