@@ -684,7 +684,7 @@ HTML_TEMPLATE = """
             transform: scale(0.98);
         }
         
-        /* Disk and network color classes for settings panel */
+        /* Disk color classes for settings panel */
         
         .disk-color { 
             color: var(--text-secondary);
@@ -694,13 +694,6 @@ HTML_TEMPLATE = """
         }
         .disk-stroke { stroke: #ff9500; }
         .disk-bg { background: #ff9500; }
-        
-        .network-color { 
-            color: var(--text-secondary);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
         
         .stat-card {
             background: var(--bg-secondary);
@@ -1117,60 +1110,11 @@ HTML_TEMPLATE = """
     <div class="settings-panel" id="settingsPanel">
         <div class="settings-content">
         <div class="settings-section">
-            <h3 class="clickable-header" onclick="toggleNetworkInfo()" style="display: flex; justify-content: space-between; align-items: center;">
-                🌐 Network Info
-                <span id="network-arrow" style="transition: transform 0.2s;">▼</span>
-            </h3>
-            <div id="network-info-submenu" style="display: none; margin-top: 10px;">
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>IP Address:</span>
-                    <span id="settings-ip" style="color: var(--accent-cpu); font-weight: 600;">Loading...</span>
-                </div>
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>Link Type:</span>
-                    <span id="settings-link-type" style="color: var(--text-primary); font-weight: 600;">-</span>
-                </div>
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>Link Speed:</span>
-                    <span id="settings-link-speed" style="color: var(--text-primary); font-weight: 600;">-</span>
-                </div>
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>Download:</span>
-                    <span id="settings-download" style="color: var(--accent-ram); font-weight: 600;">0 MB/s</span>
-                </div>
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>Upload:</span>
-                    <span id="settings-upload" style="color: var(--accent-vram); font-weight: 600;">0 MB/s</span>
-                </div>
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>Latency:</span>
-                    <span id="settings-latency" style="color: var(--text-primary); font-weight: 600;">- ms</span>
-                </div>
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>Total Down:</span>
-                    <span id="settings-total-down" style="color: var(--text-secondary); font-weight: 600;">0 GB</span>
-                </div>
-                <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
-                    <span>Total Up:</span>
-                    <span id="settings-total-up" style="color: var(--text-secondary); font-weight: 600;">0 GB</span>
-                </div>
+            <div class="theme-option" style="cursor: default; display: flex; justify-content: space-between;">
+                <span>IP Address:</span>
+                <span id="settings-ip" style="color: var(--accent-cpu); font-weight: 600;">Loading...</span>
             </div>
-        </div>
-        
-        <div class="settings-section">
-            <h3 class="clickable-header" onclick="toggleDiskInfo()" style="display: flex; justify-content: space-between; align-items: center;">
-                <span class="material-icons">save</span> Disk Info
-                <span id="disk-arrow" style="transition: transform 0.2s;">▼</span>
-            </h3>
-            <div id="disk-info-submenu" style="display: none; margin-top: 10px;">
-                <div id="settings-disk-list">
-                    <div class="theme-option" style="cursor: default; color: var(--text-secondary);">No disk data yet...</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="settings-section">
-            <h3 class="clickable-header" onclick="toggleThemeSubmenu()" style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="clickable-header" onclick="toggleThemeSubmenu()" style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
                 <span class="material-icons">palette</span> Theme Options
                 <span id="theme-arrow" style="transition: transform 0.2s;">▼</span>
             </h3>
@@ -1184,25 +1128,6 @@ HTML_TEMPLATE = """
                 <div class="theme-option" data-theme="bw" onclick="selectTheme('bw')"><span class="material-icons">contrast</span> Black & White</div>
                 <div class="theme-option" data-theme="steam" onclick="selectTheme('steam')"><span class="material-icons">videogame_asset</span> Steam</div>
             </div>
-        </div>
-        
-        <div class="settings-section">
-            <h3><span class="material-icons">screen_rotation</span> Display Rotation</h3>
-            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;"><span class="material-icons">touch_app</span> Rotates display and touch input instantly</div>
-            <div class="orientation-option" data-physical="portrait" onclick="changePhysicalOrientation('portrait')">
-                <span class="material-icons">stay_current_portrait</span> Portrait Mode
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">480×1920 vertical layout</div>
-            </div>
-            <div class="orientation-option" data-physical="landscape" onclick="changePhysicalOrientation('landscape')">
-                <span class="material-icons">stay_current_landscape</span> Landscape Mode
-                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">1920×480 horizontal layout</div>
-            </div>
-        </div>
-        
-        <div class="settings-section">
-            <h3><span class="material-icons">speed</span> Gauge Display</h3>
-            <div class="orientation-option active" data-gauge="usage" onclick="setGaugeMode('usage')"><span class="material-icons">percent</span> Show Usage %</div>
-            <div class="orientation-option" data-gauge="temp" onclick="setGaugeMode('temp')"><span class="material-icons">thermostat</span> Show Temperature</div>
         </div>
 
         <div class="settings-section">
@@ -1224,6 +1149,37 @@ HTML_TEMPLATE = """
                 <div class="theme-option" style="cursor: pointer;" onclick="resetBootAnimation()">
                     <span class="material-icons">restore</span> Reset to Default
                 </div>
+            </div>
+        </div>
+        
+        <div class="settings-section">
+            <h3 class="clickable-header" onclick="toggleDiskInfo()" style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="material-icons">save</span> Disk Info
+                <span id="disk-arrow" style="transition: transform 0.2s;">▼</span>
+            </h3>
+            <div id="disk-info-submenu" style="display: none; margin-top: 10px;">
+                <div id="settings-disk-list">
+                    <div class="theme-option" style="cursor: default; color: var(--text-secondary);">No disk data yet...</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="settings-section">
+            <h3><span class="material-icons">speed</span> Gauge Display</h3>
+            <div class="orientation-option active" data-gauge="usage" onclick="setGaugeMode('usage')"><span class="material-icons">percent</span> Show Usage %</div>
+            <div class="orientation-option" data-gauge="temp" onclick="setGaugeMode('temp')"><span class="material-icons">thermostat</span> Show Temperature</div>
+        </div>
+
+        <div class="settings-section">
+            <h3><span class="material-icons">screen_rotation</span> Display Rotation</h3>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;"><span class="material-icons">touch_app</span> Rotates display and touch input instantly</div>
+            <div class="orientation-option" data-physical="portrait" onclick="changePhysicalOrientation('portrait')">
+                <span class="material-icons">stay_current_portrait</span> Portrait Mode
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">480×1920 vertical layout</div>
+            </div>
+            <div class="orientation-option" data-physical="landscape" onclick="changePhysicalOrientation('landscape')">
+                <span class="material-icons">stay_current_landscape</span> Landscape Mode
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">1920×480 horizontal layout</div>
             </div>
         </div>
         </div> <!-- Close settings-content -->
@@ -1248,6 +1204,7 @@ HTML_TEMPLATE = """
                 </div>
             </div>
             <div class="stat-card fps-card">
+
                 <div class="fps-display">
                     <div class="fps-value" id="fps-value">{{ stats.fps }}</div>
                     <div class="fps-label">FPS</div>
@@ -1463,19 +1420,6 @@ HTML_TEMPLATE = """
             }
         }
         
-        function toggleNetworkInfo() {
-            const submenu = document.getElementById('network-info-submenu');
-            const arrow = document.getElementById('network-arrow');
-            
-            if (submenu.style.display === 'none' || submenu.style.display === '') {
-                submenu.style.display = 'block';
-                arrow.style.transform = 'rotate(180deg)';
-            } else {
-                submenu.style.display = 'none';
-                arrow.style.transform = 'rotate(0deg)';
-            }
-        }
-        
         function toggleDiskInfo() {
             const submenu = document.getElementById('disk-info-submenu');
             const arrow = document.getElementById('disk-arrow');
@@ -1659,17 +1603,9 @@ HTML_TEMPLATE = """
         }
         loadBootAnimationSetting();
 
-        // Load IP address for settings panel
-        async function loadNetworkInfo() {
-            try {
-                const response = await fetch('/api/settings/orientation');
-                const data = await response.json();
-                // Extract IP from window location as fallback
-                const ip = window.location.hostname;
-                document.getElementById('settings-ip').textContent = ip;
-            } catch (error) {
-                document.getElementById('settings-ip').textContent = window.location.hostname;
-            }
+        // Show this device's IP address in the settings panel
+        function loadNetworkInfo() {
+            document.getElementById('settings-ip').textContent = window.location.hostname;
         }
         
         // Update storage data from Bazzite stats
@@ -1693,41 +1629,6 @@ HTML_TEMPLATE = """
                 `).join('');
             } else {
                 diskList.innerHTML = '<div class="theme-option" style="cursor: default; color: var(--text-secondary);">No disk data yet...</div>';
-            }
-        }
-        
-        // Update network settings panel
-        function updateNetworkSettings(network) {
-            if (network) {
-                document.getElementById('settings-download').textContent = (network.download_speed || 0).toFixed(2) + ' MB/s';
-                document.getElementById('settings-upload').textContent = (network.upload_speed || 0).toFixed(2) + ' MB/s';
-                document.getElementById('settings-latency').textContent = network.latency_ms ? network.latency_ms.toFixed(1) + ' ms' : '- ms';
-                document.getElementById('settings-total-down').textContent = (network.total_download_gb || 0).toFixed(2) + ' GB';
-                document.getElementById('settings-total-up').textContent = (network.total_upload_gb || 0).toFixed(2) + ' GB';
-                
-                // Update link type and speed
-                const linkType = network.link_type || 'Unknown';
-                document.getElementById('settings-link-type').textContent = linkType;
-                
-                if (network.link_speed_mbps) {
-                    if (network.link_type === 'WiFi' && network.wifi_tx_speed && network.wifi_rx_speed) {
-                        document.getElementById('settings-link-speed').textContent = `↓${network.wifi_rx_speed} / ↑${network.wifi_tx_speed} Mbps`;
-                    } else if (network.link_speed_mbps >= 10000) {
-                        document.getElementById('settings-link-speed').textContent = '10 Gbps';
-                    } else if (network.link_speed_mbps >= 5000) {
-                        document.getElementById('settings-link-speed').textContent = '5 Gbps';
-                    } else if (network.link_speed_mbps >= 2500) {
-                        document.getElementById('settings-link-speed').textContent = '2.5 Gbps';
-                    } else if (network.link_speed_mbps >= 1000) {
-                        document.getElementById('settings-link-speed').textContent = '1 Gbps';
-                    } else if (network.link_speed_mbps >= 100) {
-                        document.getElementById('settings-link-speed').textContent = '100 Mbps';
-                    } else {
-                        document.getElementById('settings-link-speed').textContent = network.link_speed_mbps + ' Mbps';
-                    }
-                } else {
-                    document.getElementById('settings-link-speed').textContent = '-';
-                }
             }
         }
         
@@ -1758,36 +1659,6 @@ HTML_TEMPLATE = """
                 }
             } catch (error) {
                 console.error('Failed to fetch storage:', error);
-            }
-        }
-        
-        // Track network stats for speed calculation
-        let lastNetworkData = null;
-        let lastNetworkTime = Date.now();
-        
-        // Update network data
-        async function updateNetwork() {
-            try {
-                const response = await fetch('/api/network');
-                const data = await response.json();
-                const currentTime = Date.now();
-                
-                if (lastNetworkData) {
-                    const timeDiff = (currentTime - lastNetworkTime) / 1000; // seconds
-                    const downloadSpeed = ((data.bytes_recv - lastNetworkData.bytes_recv) / timeDiff / 1024 / 1024).toFixed(2);
-                    const uploadSpeed = ((data.bytes_sent - lastNetworkData.bytes_sent) / timeDiff / 1024 / 1024).toFixed(2);
-                    
-                    document.getElementById('net-download').textContent = downloadSpeed;
-                    document.getElementById('net-upload').textContent = uploadSpeed;
-                    document.getElementById('net-latency').textContent = data.latency_ms ? data.latency_ms.toFixed(1) : '-';
-                    document.getElementById('net-total-down').textContent = (data.bytes_recv / 1024 / 1024 / 1024).toFixed(2);
-                    document.getElementById('net-total-up').textContent = (data.bytes_sent / 1024 / 1024 / 1024).toFixed(2);
-                }
-                
-                lastNetworkData = data;
-                lastNetworkTime = currentTime;
-            } catch (error) {
-                console.error('Failed to fetch network:', error);
             }
         }
         
@@ -2042,10 +1913,7 @@ HTML_TEMPLATE = """
                 document.getElementById('last-update').textContent = stats.last_update || 'Never';
                 document.getElementById('status').classList.add('online');
                 
-                // Update settings panel with network/disk data
-                if (stats.network) {
-                    updateNetworkSettings(stats.network);
-                }
+                // Update settings panel with disk data
                 if (stats.disks) {
                     updateDiskSettings(stats.disks);
                 }
@@ -2058,7 +1926,7 @@ HTML_TEMPLATE = """
         
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', function() {
-            // Load network info
+            // Show this device's IP in the settings panel
             loadNetworkInfo();
             
             // Initialize gauge mode display
@@ -2321,38 +2189,6 @@ def get_storage():
         return jsonify({'error': str(e), 'disks': []}), 500
 
 
-@app.route('/api/network', methods=['GET'])
-def get_network():
-    """API endpoint to get network statistics"""
-    import psutil
-    import subprocess
-    try:
-        net_io = psutil.net_io_counters()
-        
-        # Get ping latency to gateway
-        latency = None
-        try:
-            result = subprocess.run(['ping', '-c', '1', '-W', '1', '8.8.8.8'], 
-                                  capture_output=True, text=True, timeout=2)
-            if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if 'time=' in line:
-                        latency = float(line.split('time=')[1].split()[0])
-                        break
-        except:
-            pass
-        
-        return jsonify({
-            'bytes_sent': net_io.bytes_sent,
-            'bytes_recv': net_io.bytes_recv,
-            'packets_sent': net_io.packets_sent,
-            'packets_recv': net_io.packets_recv,
-            'latency_ms': latency
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/api/custom_art_by_appid/<appid>')
 def get_custom_art_by_appid(appid):
     """Check if custom art exists for a game by Steam AppID"""
@@ -2369,7 +2205,7 @@ def get_custom_art_by_appid(appid):
                 return jsonify({"exists": True, "url": f"/custom_art/{appid}{ext}"})
         
         return jsonify({"exists": False})
-    except (ValueError, Exception):
+    except Exception:
         return jsonify({"exists": False})
 
 
@@ -2574,7 +2410,7 @@ def settings_page():
     try:
         hostname = socket.gethostname()
         ip_address = socket.gethostbyname(hostname)
-    except:
+    except Exception:
         ip_address = "Unknown"
     
     return render_template_string("""
@@ -2909,7 +2745,11 @@ def main():
     print("  Example (Name): 'Cyberpunk 2077.jpg'")
     print("=" * 60)
     
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    # threaded=True matters here: receive_stats() can block on Steam API
+    # calls (up to ~10-15s on a slow/hanging response), and without
+    # threading that would stall every other request - including the
+    # dashboard's own polling - until it returns.
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
 
 
 if __name__ == '__main__':

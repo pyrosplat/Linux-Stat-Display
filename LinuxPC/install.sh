@@ -196,22 +196,27 @@ chmod +x ~/linux-stats/fps_logger.sh
 echo -e "${GREEN}OK FPS logger created${NC}"
 echo ""
 
-# Create MangoHud config - FPS only, hidden overlay, auto-logging
+# Create MangoHud config - FPS only, hidden overlay
 echo -e "${BLUE}→ Configuring MangoHud...${NC}"
 mkdir -p ~/.config/MangoHud
 cat > ~/.config/MangoHud/MangoHud.conf << 'MANGOHUD_EOF'
 # Stats Display - MangoHud config
-# Overlay is hidden (no_display=1) but logs FPS continuously in the background
-# Toggle overlay visibility with Shift+F12 if needed
+# Overlay is hidden (no_display=1). Toggle overlay visibility with Shift+F12 if needed.
+#
+# NOTE: log_interval below only controls how often data points are written
+# WHILE a log is active - it does not start logging on its own. You still
+# need to toggle logging in-game with Left Shift+F2 (or bind that combo to
+# a controller input via Steam Input) each session, or FPS will show as 0
+# on the stats display. See the README's "FPS detection" section.
 
 no_display=1
 fps
 
-# Auto-logging - writes CSV continuously without needing Shift+F2
 log_interval=500
 output_folder=~/.local/share/MangoHud
 MANGOHUD_EOF
-echo -e "${GREEN}OK MangoHud configured (FPS-only, auto-logging enabled)${NC}"
+echo -e "${GREEN}OK MangoHud configured (FPS-only)${NC}"
+echo -e "${YELLOW}  Remember: press Left Shift+F2 (or your bound controller input) in-game to start logging${NC}"
 echo ""
 
 # Create CSV Cleanup Script
@@ -280,11 +285,11 @@ fi
 # Normalize line endings in case of a Windows-edited or CRLF source file
 sed -i 's/\r$//' ~/linux-stats/stat_sender.py
 
-# Update PI_IP in the sender script
-if [ -f ~/linux-stats/stat_sender.py ]; then
-    sed -i "s/PI_IP = .*/PI_IP = \"$PI_IP\"/" ~/linux-stats/stat_sender.py
-    echo -e "${GREEN}OK Stats sender configured with Pi IP: $PI_IP${NC}"
-fi
+# Pi IP is read from config.json (written above) at runtime, so nothing
+# needs to be patched into stat_sender.py itself. Editing config.json later
+# is enough to change the Pi's IP without touching the script or re-running
+# the installer.
+echo -e "${GREEN}OK Stats sender configured with Pi IP: $PI_IP${NC}"
 echo ""
 
 # Create systemd services
@@ -448,8 +453,8 @@ Restart services:
   systemctl --user restart stats-sender.service
 
 Update Pi IP address:
-  nano ~/linux-stats/stat_sender.py
-  (Change: PI_IP = "$PI_IP")
+  nano ~/linux-stats/config.json
+  (Change: "pi_ip": "$PI_IP")
   systemctl --user restart stats-sender.service
 
 Uninstall everything:
@@ -474,9 +479,12 @@ HOW IT WORKS:
 TROUBLESHOOTING:
 ----------------
 FPS showing 0:
-  1. Launch a game and check: ls ~/*.csv
-  2. Verify FPS file: cat /tmp/fps.txt
-  3. Check logger: systemctl --user status fps-logger.service
+  1. Press Left Shift+F2 in-game (or your bound controller input) to
+     start MangoHud logging - this is required every session, it does
+     not start automatically
+  2. Launch a game and check: ls ~/*.csv
+  3. Verify FPS file: cat /tmp/fps.txt
+  4. Check logger: systemctl --user status fps-logger.service
 
 Stats not on Pi:
   1. Ping Pi: ping $PI_IP

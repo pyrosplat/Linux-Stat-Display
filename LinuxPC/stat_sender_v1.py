@@ -168,30 +168,38 @@ def get_gpu_name():
 # CPU STATS
 # ============================================================
 
+_last_cpu_total = None
+_last_cpu_idle = None
+
+
 def get_cpu_usage():
-    """Get CPU usage percentage using /proc/stat (more efficient than top)"""
+    """Get CPU usage percentage from /proc/stat deltas (no subprocess spawn).
+
+    Needs two samples to compute a delta, so the very first call returns
+    0.0; every call after that is a real reading based on the time elapsed
+    since the previous call.
+    """
+    global _last_cpu_total, _last_cpu_idle
     try:
-        # Read CPU stats from /proc/stat (much faster than top)
         with open('/proc/stat', 'r') as f:
             line = f.readline()
-            if line.startswith('cpu '):
-                fields = line.split()[1:]
-                total = sum(int(x) for x in fields)
-                idle = int(fields[3])  # idle is the 4th field
-                
-                # Calculate usage (requires two samples, so we'll use a simpler method)
-                # For now, use top as fallback for accuracy
-                pass
-        
-        # Fallback to top (already optimized with -bn1)
-        result = subprocess.run(['top', '-bn1'], capture_output=True, text=True, timeout=2)
-        for line in result.stdout.split('\n'):
-            if 'Cpu(s)' in line:
-                idle = float(line.split(',')[3].split()[0])
-                return round(100 - idle, 1)
+        if line.startswith('cpu '):
+            fields = [int(x) for x in line.split()[1:]]
+            total = sum(fields)
+            idle = fields[3]  # idle is the 4th field
+
+            if _last_cpu_total is not None:
+                total_delta = total - _last_cpu_total
+                idle_delta = idle - _last_cpu_idle
+                _last_cpu_total, _last_cpu_idle = total, idle
+                if total_delta > 0:
+                    return round(100 * (1 - idle_delta / total_delta), 1)
+                return 0.0
+
+            _last_cpu_total, _last_cpu_idle = total, idle
     except Exception as e:
         print(f"Warning: Could not read CPU usage: {e}")
-    
+
     return 0.0
 
 
@@ -257,8 +265,8 @@ def get_cpu_power():
             if not name_file.exists():
                 continue
             name = name_file.read_text().strip()
-            if name in ['zenergy', 'amdgpu']:
-                continue
+            if name == 'amdgpu':
+                continue  # that's the GPU sensor, not CPU
             for pfile in ['power1_input', 'power1_average']:
                 p = hwmon_path / pfile
                 if p.exists():
@@ -326,26 +334,14 @@ def get_gpu_stats():
             # card device. Find the drm card whose device symlink resolves to
             # the same PCI path as this hwmon.
             hwmon_pci = (hwmon_path / 'device').resolve()
-            print(f"DEBUG hwmon: {hwmon_path}, pci: {hwmon_pci}")
             gpu_card = None
             for card_dev in Path('/sys/class/drm').glob('card*/device'):
-                card_resolved = card_dev.resolve()
-                print(f"DEBUG   drm card: {card_dev} -> {card_resolved} | match={card_resolved == hwmon_pci}")
-                if card_resolved == hwmon_pci:
+                if card_dev.resolve() == hwmon_pci:
                     gpu_card = card_dev
                     break
             if gpu_card is None:
-                print(f"DEBUG no drm match found, falling back to first card")
                 card_paths = list(Path('/sys/class/drm').glob('card*/device'))
                 gpu_card = card_paths[0] if card_paths else Path('/sys/class/drm/card0/device')
-            print(f"DEBUG gpu_card={gpu_card}")
-            
-            # Verify key files exist
-            for fname in ['gpu_busy_percent', 'mem_info_vis_vram_used', 'mem_info_vis_vram_total']:
-                fpath = gpu_card / fname
-                exists = fpath.exists()
-                val = fpath.read_text().strip() if exists else "N/A"
-                print(f"DEBUG   {fname}: exists={exists} val={val}")
 
             # GPU usage
             usage_file = gpu_card / 'gpu_busy_percent'
@@ -451,7 +447,7 @@ def get_memory_stats():
                         if speed and speed != 'Unknown':
                             ram_info['speed'] = speed
                             break
-        except:
+        except Exception:
             # dmidecode not available or requires root - that's OK, continue without RAM type/speed
             pass
         
@@ -471,7 +467,25 @@ def get_memory_stats():
 # DISK STATS
 # ============================================================
 
+_cached_disk_stats = []
+_cached_disk_time = 0
+DISK_CACHE_DURATION = 10  # seconds - disk usage doesn't need per-second freshness
+
+
 def get_disk_stats():
+    """Get physical disk statistics (cached; refreshed every DISK_CACHE_DURATION
+    seconds since it shells out to lsblk + one df call per mounted partition)."""
+    global _cached_disk_stats, _cached_disk_time
+    now = time.time()
+    if now - _cached_disk_time < DISK_CACHE_DURATION:
+        return _cached_disk_stats
+
+    _cached_disk_stats = _collect_disk_stats()
+    _cached_disk_time = now
+    return _cached_disk_stats
+
+
+def _collect_disk_stats():
     """Get physical disk statistics by aggregating all their partitions"""
     try:
         disks = {}  # Use dict to aggregate partitions by physical disk
@@ -482,11 +496,6 @@ def get_disk_stats():
         
         if result.returncode == 0:
             lines = result.stdout.strip().split('\n')
-            
-            # Debug: print lsblk output
-            print("Debug: lsblk output:")
-            for line in lines[:10]:  # Print first 10 lines
-                print(f"  {line}")
             
             # First pass: identify physical disks
             physical_disks = {}
@@ -514,8 +523,6 @@ def get_disk_stats():
                             'partitions_seen': set()  # Track which partitions we've counted
                         }
             
-            print(f"Debug: Found {len(physical_disks)} physical disks: {list(physical_disks.keys())}")
-            
             # Second pass: aggregate partition usage for each disk
             for line in lines:
                 parts = line.split(maxsplit=3)
@@ -524,8 +531,6 @@ def get_disk_stats():
                     name = parts[0].strip().lstrip('└├─│ ')
                     dev_type = parts[2]
                     mountpoint = parts[3].strip()
-                    
-                    print(f"Debug: Checking {name} (type={dev_type}, mount={mountpoint})")
                     
                     # Skip if not a partition or not mounted
                     if dev_type != 'part' or not mountpoint or mountpoint == '':
@@ -541,13 +546,11 @@ def get_disk_stats():
                                 break
                     
                     if not parent_disk:
-                        print(f"Debug: No parent disk found for {name}")
                         continue
                     
                     # Check if we've already counted this partition
                     # (Bazzite has bind mounts - same partition mounted multiple times)
                     if name in physical_disks[parent_disk]['partitions_seen']:
-                        print(f"Debug: Skipping duplicate mount {mountpoint} (partition {name} already counted)")
                         continue
                     
                     # Mark partition as seen
@@ -564,11 +567,7 @@ def get_disk_stats():
                                 if len(df_parts) >= 3:
                                     partition_used = int(df_parts[2])
                                     physical_disks[parent_disk]['used_bytes'] += partition_used
-                                    print(f"Debug: {mountpoint} ({name}) on {parent_disk}: {partition_used / (1024**3):.1f} GB")
-                        else:
-                            print(f"Debug: df command failed for {mountpoint}")
-                    except Exception as e:
-                        print(f"Debug: Failed to get usage for {mountpoint}: {e}")
+                    except Exception:
                         pass
             
             # Calculate percentages and convert to GB
@@ -578,8 +577,6 @@ def get_disk_stats():
                     disk['percent'] = round((disk['used_bytes'] / disk['total_bytes']) * 100, 1)
                 else:
                     disk['percent'] = 0
-                
-                print(f"Debug: Disk {disk_name}: {disk['used_gb']} GB / {disk['total_gb']} GB used ({disk['percent']}%)")
                 
                 # Remove tracking data from final output
                 disk.pop('partitions_seen', None)
@@ -596,141 +593,7 @@ def get_disk_stats():
         return list(disks.values())
     except Exception as e:
         print(f"Warning: Could not read disk stats: {e}")
-        import traceback
-        traceback.print_exc()
         return []
-
-
-# ============================================================
-# NETWORK STATS
-# ============================================================
-
-_last_net_stats = None
-_last_net_time = None
-
-def get_network_stats():
-    """Get network statistics with speed calculation and link speeds"""
-    global _last_net_stats, _last_net_time
-    
-    try:
-        current_time = time.time()
-        
-        # Read network stats from /proc/net/dev
-        bytes_sent = bytes_recv = 0
-        active_interface = None
-        with open('/proc/net/dev', 'r') as f:
-            lines = f.readlines()[2:]  # Skip headers
-            for line in lines:
-                parts = line.split()
-                interface = parts[0].rstrip(':')
-                # Skip loopback
-                if interface == 'lo':
-                    continue
-                recv = int(parts[1])
-                sent = int(parts[9])
-                bytes_recv += recv
-                bytes_sent += sent
-                # Track the most active interface
-                if recv > 0 or sent > 0:
-                    if not active_interface or recv + sent > bytes_recv + bytes_sent:
-                        active_interface = interface
-        
-        # Get link speed for the active interface
-        link_speed_mbps = None
-        link_type = None
-        wifi_tx_speed = None
-        wifi_rx_speed = None
-        
-        if active_interface:
-            # Check if it's WiFi
-            if active_interface.startswith('wl') or active_interface.startswith('wlan'):
-                link_type = 'WiFi'
-                # Get WiFi link speed using iw
-                try:
-                    result = subprocess.run(['iw', 'dev', active_interface, 'link'],
-                                          capture_output=True, text=True, timeout=2)
-                    if result.returncode == 0:
-                        for line in result.stdout.split('\n'):
-                            if 'tx bitrate:' in line.lower():
-                                # Extract speed like "tx bitrate: 866.7 MBit/s"
-                                parts = line.split(':')[1].strip().split()
-                                if len(parts) >= 1:
-                                    wifi_tx_speed = float(parts[0])
-                            elif 'rx bitrate:' in line.lower():
-                                parts = line.split(':')[1].strip().split()
-                                if len(parts) >= 1:
-                                    wifi_rx_speed = float(parts[0])
-                        # Use the higher of tx/rx as the link speed
-                        if wifi_tx_speed or wifi_rx_speed:
-                            link_speed_mbps = max(wifi_tx_speed or 0, wifi_rx_speed or 0)
-                except:
-                    pass
-            else:
-                # Ethernet - check link speed from sysfs
-                link_type = 'Ethernet'
-                try:
-                    speed_file = f'/sys/class/net/{active_interface}/speed'
-                    with open(speed_file, 'r') as f:
-                        speed = int(f.read().strip())
-                        if speed > 0:
-                            link_speed_mbps = speed
-                except:
-                    pass
-        
-        # Calculate speeds
-        download_speed = upload_speed = 0
-        if _last_net_stats and _last_net_time:
-            time_diff = current_time - _last_net_time
-            if time_diff > 0:
-                download_speed = (bytes_recv - _last_net_stats['bytes_recv']) / time_diff / 1024 / 1024  # MB/s
-                upload_speed = (bytes_sent - _last_net_stats['bytes_sent']) / time_diff / 1024 / 1024  # MB/s
-        
-        # Get latency (ping to 8.8.8.8)
-        latency = None
-        try:
-            result = subprocess.run(['ping', '-c', '1', '-W', '1', '8.8.8.8'],
-                                  capture_output=True, text=True, timeout=2)
-            if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if 'time=' in line:
-                        latency = float(line.split('time=')[1].split()[0])
-                        break
-        except:
-            pass
-        
-        current_stats = {
-            'bytes_sent': bytes_sent,
-            'bytes_recv': bytes_recv,
-            'download_speed': max(0, round(download_speed, 2)),
-            'upload_speed': max(0, round(upload_speed, 2)),
-            'total_download_gb': round(bytes_recv / 1024 / 1024 / 1024, 2),
-            'total_upload_gb': round(bytes_sent / 1024 / 1024 / 1024, 2),
-            'latency_ms': round(latency, 1) if latency else None,
-            'link_speed_mbps': link_speed_mbps,
-            'link_type': link_type,
-            'wifi_tx_speed': wifi_tx_speed,
-            'wifi_rx_speed': wifi_rx_speed,
-            'interface': active_interface
-        }
-        
-        _last_net_stats = {'bytes_sent': bytes_sent, 'bytes_recv': bytes_recv}
-        _last_net_time = current_time
-        
-        return current_stats
-    except Exception as e:
-        print(f"Warning: Could not read network stats: {e}")
-        return {
-            'download_speed': 0,
-            'upload_speed': 0,
-            'total_download_gb': 0,
-            'total_upload_gb': 0,
-            'latency_ms': None,
-            'link_speed_mbps': None,
-            'link_type': None,
-            'wifi_tx_speed': None,
-            'wifi_rx_speed': None,
-            'interface': None
-        }
 
 
 # ============================================================
@@ -748,7 +611,7 @@ def get_fps_from_mangohud():
             fps_str = fps_file.read_text().strip()
             if fps_str.isdigit():
                 return int(fps_str)
-    except:
+    except Exception:
         pass
 
     # Fallback: read MangoHud CSV directly
@@ -774,7 +637,7 @@ def get_fps_from_mangohud():
                             except ValueError:
                                 pass
                 break
-    except:
+    except Exception:
         pass
 
     return 0
@@ -812,7 +675,7 @@ def get_fps_from_gamescope():
                     num_match = re.search(r'(\d+(?:\.\d+)?)', line)
                     if num_match:
                         return int(float(num_match.group(1)))
-    except:
+    except Exception:
         pass
     
     return 0
@@ -875,18 +738,22 @@ def get_current_game():
     game_info = {"name": "Desktop", "appid": None}
     
     # Method 1: Check Steam running games
+    # One pgrep call finds every running steam_app_<id> process at once,
+    # instead of spawning a separate pgrep per installed game manifest
+    # (which could be 100+ subprocess calls a second on a big library).
     try:
-        for steam_path in get_steam_paths():
-            for manifest in steam_path.glob('appmanifest_*.acf'):
-                appid = manifest.stem.split('_')[1]
-                
-                # Check if game process is running
-                result = subprocess.run(
-                    ['pgrep', '-f', f'steam_app_{appid}'],
-                    capture_output=True, text=True, timeout=1
-                )
-                
-                if result.returncode == 0:
+        result = subprocess.run(
+            ['pgrep', '-af', 'steam_app_'],
+            capture_output=True, text=True, timeout=1
+        )
+        running_appids = set(re.findall(r'steam_app_(\d+)', result.stdout)) if result.returncode == 0 else set()
+
+        if running_appids:
+            for steam_path in get_steam_paths():
+                for manifest in steam_path.glob('appmanifest_*.acf'):
+                    appid = manifest.stem.split('_')[1]
+                    if appid not in running_appids:
+                        continue
                     # Parse game name from manifest
                     try:
                         content = manifest.read_text(encoding='utf-8', errors='ignore')
@@ -895,7 +762,7 @@ def get_current_game():
                             game_name = name_match.group(1)
                             update_game_cache(game_name, appid)
                             return {"name": game_name, "appid": appid}
-                    except:
+                    except Exception:
                         pass
     except Exception as e:
         print(f"Warning: Steam game detection failed: {e}")
@@ -936,7 +803,7 @@ def get_current_game():
             if _cached_game_name and (current_time - _cached_game_time) < GAME_CACHE_DURATION:
                 return {"name": _cached_game_name, "appid": _cached_game_appid}
             return {"name": "SteamOS", "appid": None}
-    except:
+    except Exception:
         pass
     
     # Method 4: GameMode detection
@@ -950,7 +817,7 @@ def get_current_game():
             if _cached_game_name and (current_time - _cached_game_time) < GAME_CACHE_DURATION:
                 return {"name": _cached_game_name, "appid": _cached_game_appid}
             return {"name": "Gaming (Active)", "appid": None}
-    except:
+    except Exception:
         pass
     
     # Use cache if still valid
@@ -987,7 +854,6 @@ def collect_stats():
         },
         "ram": get_memory_stats(),
         "disks": get_disk_stats(),
-        "network": get_network_stats(),
         "fps": get_fps(),
         "game": game_info["name"],
         "appid": game_info["appid"],

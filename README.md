@@ -17,7 +17,7 @@ Real-time system stats from your Linux gaming PC, displayed on a Raspberry Pi to
 - **Custom game art** - JPG, PNG, WEBP, animated GIF
 - **Live stats** - CPU/GPU/RAM/VRAM, FPS, temps, frequencies, power draw
 - **Steam integration** - game name, player count, artwork
-- **Touch settings panel** - themes, orientation, network/disk info
+- **Touch settings panel** - themes, orientation, disk info
 - **Auto-start on boot**
 
 | Portrait - B&W | Portrait - Light | Portrait - Cyberpunk |
@@ -58,6 +58,13 @@ Add to your Steam launch options:
 mangohud %command%
 ```
 
+Adding the launch option alone isn't enough - MangoHud only writes the FPS log file (the CSV this project reads) while logging is actively toggled on, so you also need a way to start/stop it in-game:
+
+- **Keyboard:** the default toggle is `Left Shift + F2`. Press it once after the game launches to start logging (press again to stop).
+- **Controller (Steam Input):** bind the same toggle to a controller input so you don't need a keyboard at the couch/desk. In the in-game Steam overlay, go to **Controller Settings → Configure Controller Layout**, add a new binding, and set the action to **Toggle Performance Overlay/Logging** (or bind it manually to the `Left Shift + F2` keyboard combo under **Keyboard/Mouse bindings**). Holding a spare button like **Select/Back** is a common choice so it can't be triggered accidentally.
+
+If FPS is showing as `0` on the stats display, this is almost always the reason - check that logging was actually toggled on for the current play session.
+
 ## Uninstall
 
 **Raspberry Pi:**
@@ -75,6 +82,7 @@ sudo ~/uninstall-stats-display.sh
 | Problem | Check |
 |---|---|
 | Display not showing stats | `sudo systemctl status stats-display.service` and `sudo journalctl -u stats-display.service -n 50` |
+| FPS showing as 0 | Logging wasn't toggled on for this session - press `Left Shift + F2` (or your bound controller input) in-game. See [FPS detection](#fps-detection). |
 | Orientation change fails | `cd ~/stats-display/scripts && ./rotate-landscape.sh` (or `rotate-portrait.sh`) to test manually |
 | Touch not working | `xinput list`, then `DISPLAY=:0 xinput map-to-output <device-id> HDMI-1` |
 | Stats not arriving from PC | `systemctl --user status stats-sender.service` and `journalctl --user -u stats-sender.service -f`, then `ping <pi-ip>` |
@@ -83,7 +91,7 @@ sudo ~/uninstall-stats-display.sh
 ## Changing the Pi's IP later
 
 ```bash
-nano ~/linux-stats/stat_sender.py   # update PI_IP
+nano ~/linux-stats/config.json   # update "pi_ip"
 systemctl --user restart stats-sender.service
 ```
 
