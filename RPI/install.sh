@@ -3,13 +3,22 @@
 # Raspberry Pi Stats Display Installer
 # Recommended: Raspberry Pi 3 or newer for best performance
 #
+# PATCHED for Rock Pi 4B+ / Radxa Bookworm KDE images:
+#   1. Added python3-requests to the dependency list (stats_display.py
+#      imports `requests`, which is not preinstalled on Debian like it
+#      often is on Raspberry Pi OS).
+#   2. Forced LightDM to actually become the active display manager.
+#      Radxa's KDE image ships with SDDM by default; installing the
+#      lightdm package alone does not switch the system over to it, so
+#      the autologin-into-openbox config below was silently never used.
+#
 # Everything this app owns lives under one consolidated directory:
 #   ~/stats-display/
-#     app/        <- stats_display.py, start_optimized.sh
-#     scripts/    <- rotate-portrait.sh, rotate-landscape.sh, rotate-boot.sh,
-#                    restart-display.sh, stop-display.sh, status-display.sh
-#     state/      <- orientation.txt (persisted orientation choice)
-#     game_art/   <- custom game artwork
+#     app/      <- stats_display.py, start_optimized.sh
+#     scripts/  <- rotate-portrait.sh, rotate-landscape.sh, rotate-boot.sh,
+#                  restart-display.sh, stop-display.sh, status-display.sh
+#     state/    <- orientation.txt (persisted orientation choice)
+#     game_art/ <- custom game artwork
 #
 # A handful of files still have to live in OS-mandated locations and can't be
 # moved into the tree above: the systemd unit (/etc/systemd/system/), the
@@ -108,10 +117,14 @@ print_success "System updated"
 print_header "Installing Dependencies"
 
 # Common dependencies
+# PATCH: added python3-requests - stats_display.py imports `requests`,
+# which isn't preinstalled by default on plain Debian/Radxa images the way
+# it often is on Raspberry Pi OS.
 apt-get install -y \
     python3 \
     python3-pip \
     python3-flask \
+    python3-requests \
     x11-xserver-utils \
     xdotool \
     unclutter \
@@ -127,7 +140,7 @@ BROWSER_CMD="firefox-esr"
 KIOSK_FLAGS="--kiosk --private-window"
 BROWSER_CLASS="firefox"
 
-pip3 install --break-system-packages --root-user-action=ignore flask
+pip3 install --break-system-packages --root-user-action=ignore flask requests
 print_success "Dependencies installed"
 
 #==============================================================================
@@ -142,6 +155,7 @@ print_success "Directory tree created at $APP_ROOT"
 # 4. COPY STATS DISPLAY SCRIPT
 #==============================================================================
 print_header "Installing Stats Display Script"
+
 if [ -f "$STATS_SCRIPT" ]; then
     cp "$STATS_SCRIPT" "$APP_DIR/stats_display.py"
     print_success "Stats display script installed (found locally)"
@@ -161,6 +175,7 @@ else
         exit 1
     fi
 fi
+
 # Normalize line endings in case of a Windows-edited or CRLF source file
 sed -i 's/\r$//' "$APP_DIR/stats_display.py"
 chmod +x "$APP_DIR/stats_display.py"
@@ -197,7 +212,6 @@ print_info "Creating display rotation scripts..."
 cat > "$SCRIPTS_DIR/rotate-portrait.sh" << 'PORTRAIT_EOF'
 #!/bin/bash
 # Portrait rotation script - optimized for speed
-
 export DISPLAY=:0
 
 # Rotate display to portrait (normal)
@@ -222,7 +236,6 @@ PORTRAIT_EOF
 cat > "$SCRIPTS_DIR/rotate-landscape.sh" << 'LANDSCAPE_EOF'
 #!/bin/bash
 # Landscape rotation script - optimized for speed
-
 export DISPLAY=:0
 
 # Rotate display to landscape (left)
@@ -360,7 +373,6 @@ mkdir -p "$USER_HOME/.config/openbox"
 # Create autostart script with optimized browser launch
 cat > "$USER_HOME/.config/openbox/autostart" << EOF
 #!/bin/bash
-
 # Disable screen blanking and power management
 xset s off
 xset s noblank
@@ -421,7 +433,19 @@ autologin-user-timeout=0
 autologin-session=openbox
 EOF
 
-print_success "Auto-login configured for user: $CURRENT_USER"
+# PATCH: Force LightDM to actually be the system's active display manager.
+# On distros like Radxa's KDE image (which default to SDDM), simply
+# installing the lightdm package and writing its config does nothing -
+# SDDM stays in control and keeps showing its own login screen, so the
+# autologin-into-openbox config above is silently never used. This makes
+# LightDM the one systemd actually starts.
+print_info "Ensuring LightDM is the active display manager (was likely SDDM)..."
+echo "/usr/sbin/lightdm" > /etc/X11/default-display-manager
+systemctl disable sddm.service 2>/dev/null || true
+systemctl disable gdm.service 2>/dev/null || true
+systemctl disable gdm3.service 2>/dev/null || true
+systemctl enable lightdm.service
+print_success "LightDM set as active display manager for user: $CURRENT_USER"
 
 #==============================================================================
 # 10. OPTIMIZE FLASK SERVER FOR PI ZERO
@@ -441,7 +465,6 @@ EOF
 
 chmod +x "$APP_DIR/start_optimized.sh"
 chown "$CURRENT_USER:$CURRENT_USER" "$APP_DIR/start_optimized.sh"
-
 print_success "Flask server optimized for low memory"
 
 #==============================================================================
@@ -550,7 +573,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 print_header() { echo -e "${BLUE}========================================${NC}"; echo -e "${BLUE}$1${NC}"; echo -e "${BLUE}========================================${NC}"; }
-print_info()    { echo -e "${GREEN}[INFO]${NC} $1"; }
+print_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_success() { echo -e "${GREEN}[OK]${NC} $1"; }
 
@@ -615,13 +638,14 @@ else
 fi
 
 # 6. Clean up legacy locations from older installs (pre-consolidation),
-#    in case this uninstaller is run against an install that predates the
-#    single-directory layout.
+# in case this uninstaller is run against an install that predates the
+# single-directory layout.
 print_header "Checking for legacy files from older installs"
 [ -d /opt/stats-display ] && { rm -rf /opt/stats-display; print_info "Removed legacy /opt/stats-display"; }
 [ -f "$USER_HOME/restart-display.sh" ] && { rm -f "$USER_HOME/restart-display.sh"; print_info "Removed legacy ~/restart-display.sh"; }
 [ -f "$USER_HOME/stop-display.sh" ] && { rm -f "$USER_HOME/stop-display.sh"; print_info "Removed legacy ~/stop-display.sh"; }
 [ -f "$USER_HOME/status-display.sh" ] && { rm -f "$USER_HOME/status-display.sh"; print_info "Removed legacy ~/status-display.sh"; }
+
 if [ -d "$USER_HOME/game_art" ]; then
     print_warning "Legacy ~/game_art still exists - leaving it in place (not removed automatically, may contain your custom art)"
 fi
@@ -641,6 +665,7 @@ print_success "Uninstaller created at $UNINSTALL_SCRIPT"
 # 14. START THE SERVICE
 #==============================================================================
 print_header "Starting Stats Display Service"
+
 systemctl start ${SERVICE_NAME}.service
 sleep 2
 
@@ -663,14 +688,14 @@ echo "Orientation: $ORIENTATION"
 echo "IP Address: $LOCAL_IP"
 echo ""
 echo -e "${GREEN}Everything lives under:${NC} $APP_ROOT"
-echo "  app/        stats_display.py, start_optimized.sh"
-echo "  scripts/    rotation + restart/stop/status scripts"
-echo "  state/      orientation.txt"
-echo "  game_art/   custom game artwork"
+echo "  app/      stats_display.py, start_optimized.sh"
+echo "  scripts/  rotation + restart/stop/status scripts"
+echo "  state/    orientation.txt"
+echo "  game_art/ custom game artwork"
 echo ""
 echo -e "${GREEN}Access Points:${NC}"
-echo "  Main Display:  http://${LOCAL_IP}:5000"
-echo "  Settings Page: http://${LOCAL_IP}:5000/settings"
+echo "  Main Display:   http://${LOCAL_IP}:5000"
+echo "  Settings Page:  http://${LOCAL_IP}:5000/settings"
 echo ""
 echo -e "${GREEN}Quick Commands:${NC}"
 echo "  Restart display: $SCRIPTS_DIR/restart-display.sh"
